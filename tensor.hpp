@@ -142,10 +142,10 @@ public:
   {
     assert(other.size() == this->size());
 
-    for (std::size_t j = 0; j < this->size(); ++j)
-    {
-      this->At(j) = other.At(j);
-    }
+    // for (std::size_t j = 0; j < this->size(); ++j)
+    // {
+    //   this->At(j) = other.At(j);
+    // }
   }
 
   // TODO(private, 520) fix capitalisation (kepping it consistent with NDArray for now)
@@ -232,11 +232,13 @@ public:
     return index;
   }
 
+  
+
   void Fill(T const &value)
   {
-    for (SizeType i(0); i < size(); ++i)
+    for (T &e : *this)
     {
-      At(i) = value;
+      e = value;
     }
   }
 
@@ -258,59 +260,56 @@ public:
                                        offset_);
   }
 
+  //////////////////////////
+  /// OFFSET COMPUTATION ///
+  //////////////////////////
+
+  template <SizeType N, typename FirstIndex, typename... Indices>
+  SizeType OffsetForIndices(FirstIndex &&index, Indices &&... indices) const
+  {
+    return static_cast<SizeType>(index) * strides_[N] +
+      OffsetForIndices<N + 1>(std::forward<Indices>(indices)...);
+  }
+  
+  template <SizeType N, typename FirstIndex>
+  SizeType OffsetForIndices(FirstIndex &&index) const
+  {
+    return static_cast<SizeType>(index) * strides_[N];
+  }
+
+  template <SizeType N, typename FirstIndex, typename... Indices>
+  std::pair<SizeType, T> OffsetAndValueForIndices(FirstIndex &&index, Indices &&... indices) const
+  {
+    return std::pair<SizeType, T>(OffsetAndValueForIndices<N + 1>(std::forward<Indices>(indices)...).first + static_cast<SizeType>(index) * strides_[N], OffsetAndValueForIndices<N + 1>(std::forward<Indices>(indices)...).second);
+  }
+  
+  template <SizeType N, typename FirstIndex>
+  std::pair<SizeType, T> OffsetAndValueForIndices(FirstIndex &&index) const
+  {
+    return std::pair<SizeType, T>(0, index);
+  }
+
   /////////////////
   /// ACCESSORS ///
   /////////////////
-
-  T &At(SizeType i)
+  
+  template <typename... Indices>
+  T const &Get(Indices... indices) const
   {
-    return (*storage_)[OffsetOfElement(IndicesOfElement(i))];
-  }
-
-  T const &At(SizeType i) const
-  {
-    return (*storage_)[OffsetOfElement(IndicesOfElement(i))];
-  }
-
-  T const &operator()(std::vector<SizeType> const &indices) const
-  {
-    return At(indices);
-  }
-
-  T const &At(std::vector<SizeType> const &indices) const
-  {
-    return (*storage_)[OffsetOfElement(indices)];
-  }
-
-  T &At(std::vector<SizeType> const &indices)
-  {
-    return (*storage_)[OffsetOfElement(indices)];
+    return (*storage_)[OffsetForIndices<0>(indices...)];
   }
 
   ///////////////
   /// SETTERS ///
   ///////////////
 
-  void Set(std::vector<SizeType> const &indices, T value)
-  {
-    (*storage_)[OffsetOfElement(indices)] = value;
+  template <typename... Indices>
+  void Set(Indices... indicesAndValuesPack)
+  {    
+    std::pair<SizeType, T> ret = OffsetAndValueForIndices<0>(indicesAndValuesPack...);
+    (*storage_)[ret.first] = ret.second;
   }
-
-  void Set(SizeType i, T value)
-  {
-    (*storage_)[OffsetOfElement(IndicesOfElement(i))] = value;
-  }
-
-  T &operator[](SizeType i)
-  {
-    return At(i);
-  }
-
-  T const &operator[](SizeType i) const
-  {
-    return At(i);
-  }
-
+  
   /*
    * return a slice of the tensor along the first dimension
    */
@@ -412,16 +411,6 @@ public:
     return *this;
   }
 
-  Tensor<T> &InlineReverseSubtract(Tensor<T> const &o)
-  {
-    assert(size() == o.size());
-    for (SizeType i(0); i < size(); ++i)
-    {
-      At(i) = o.At(i) - At(i);
-    }
-    return *this;
-  }
-
   Tensor<T> &InlineMultiply(T const &o)
   {
     for (T &e : *this)
@@ -489,25 +478,6 @@ public:
     return ret;
   }
 
-  /**
-   * randomly reassigns the data within the tensor - expensive method since it requires data copy
-   */
-  void Shuffle()
-  {
-    std::default_random_engine rng{};
-    std::vector<SizeType>      idxs(size());
-    std::iota(std::begin(idxs), std::end(idxs), 0);
-    std::shuffle(idxs.begin(), idxs.end(), rng);
-
-    // instantiate new tensor with copy of data
-    Tensor<Type> tmp = this->Clone();
-
-    // copy data back according to shuffle
-    for (std::size_t j = 0; j < tmp.size(); ++j)
-    {
-      this->Set(j, tmp.At(idxs[j]));
-    }
-  }
 
   std::string ToString() const
   {
@@ -517,7 +487,7 @@ public:
     {
       for (SizeType i(0); i < shape_[0]; ++i)
       {
-        ss << At(i) << "\t";
+        ss << Get(i) << "\t";
       }
     }
     if (shape_.size() == 2)
@@ -526,7 +496,7 @@ public:
       {
         for (SizeType j(0); j < shape_[1]; ++j)
         {
-          ss << At({i, j}) << "\t";
+          ss << Get(i, j) << "\t";
         }
         ss << "\n";
       }

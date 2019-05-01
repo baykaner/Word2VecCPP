@@ -104,6 +104,7 @@ void *TrainModelThread(void *id)
   real *neu1 = (real *)calloc(layer1_size, sizeof(real));
   real *neu1e = (real *)calloc(layer1_size, sizeof(real));
 
+  auto sample = thread_loader.GetNext();
   unsigned int iterations = global_loader.Size() / num_threads;
   for (unsigned int i(0) ; i < iter * iterations ; ++i)
     {
@@ -123,9 +124,9 @@ void *TrainModelThread(void *id)
 	  std::cout << id << " -- Reset" << std::endl;
 	  thread_loader.Reset();
 	}
-      auto sample = thread_loader.GetNext();
+      sample = thread_loader.GetNext(sample);
       
-      word = sample.second;
+      word = sample.second.Get(0);
     
       for (c = 0; c < layer1_size; c++)
 	neu1[c] = 0;
@@ -137,13 +138,15 @@ void *TrainModelThread(void *id)
       if (cbow)
 	{
 	  cw = 0;
-	  for (a = b; a < window * 2 - b; a++)
+	  for (a = 0 ; a < window * 2; a++)
 	    {
-	      last_word = sample.first.At(a);
-
-	      for (c = 0; c < layer1_size; c++)
-		neu1[c] += syn0[last_word][c];
-	      cw++;
+	      last_word = sample.first.Get(a);
+	      if (last_word >= 0)
+		{
+		  for (c = 0; c < layer1_size; c++)
+		    neu1[c] += syn0[last_word][c];
+		  cw++;
+		}
 	    }
       
 	  if (cw)
@@ -201,12 +204,12 @@ void *TrainModelThread(void *id)
 		    }
 		}
 	      
-	      for (a = b; a < window * 2 - b; a++)
+	      for (a = 0 ; a < window * 2 ; a++)
 		{
-		  last_word = sample.first.At(a);
-		      
-		  for (c = 0; c < layer1_size; c++)
-		    syn0[last_word][c] += neu1e[c];
+		  last_word = sample.first.Get(a);
+		  if (last_word >= 0)
+		    for (c = 0; c < layer1_size; c++)
+		      syn0[last_word][c] += neu1e[c];
 		}
 	    }
 	} 

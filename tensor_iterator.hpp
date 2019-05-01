@@ -28,7 +28,7 @@ class TensorIterator
 
   friend class Tensor<T>;
 
-private:
+public: // private:
   TensorIterator(std::vector<SizeType> const &shape, std::vector<SizeType> const &strides,
                  std::vector<SizeType> const &padding, std::vector<SizeType> const &coordinate,
                  std::shared_ptr<std::vector<T>> const &storage, SizeType const &offset)

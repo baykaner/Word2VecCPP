@@ -30,7 +30,7 @@ namespace fetch {
 namespace ml {
 
 template <typename T>
-class CBOWLoader : public DataLoader<fetch::math::Tensor<T>, uint64_t>
+class CBOWLoader : public DataLoader<fetch::math::Tensor<T>, fetch::math::Tensor<T>>
 {
 public:
   CBOWLoader(uint64_t window_size)
@@ -132,14 +132,19 @@ public:
     vocab_ = std::move(new_loader.vocab_);
   }
 
-  virtual std::pair<fetch::math::Tensor<T>, uint64_t> GetNext()
+  std::pair<fetch::math::Tensor<T>, fetch::math::Tensor<T>> GetNext(
+								    std::pair<fetch::math::Tensor<T>, fetch::math::Tensor<T>> &t)
   {
-    fetch::math::Tensor<T> t(window_size_ * 2);
-    uint64_t               label = data_[currentSentence_][currentWord_ + window_size_];
-    for (uint64_t i(0); i < window_size_; ++i)
+    // This seems to be one of the most important tricks to get word2vec to train
+    // The number of context words changes at each iteration with values in range [1 * 2,
+    // window_size_ * 2]
+    uint64_t dynamic_size = (uint64_t)rand() % window_size_ + 1;
+    t.second.Set(0, T(data_[currentSentence_][currentWord_ + dynamic_size]));
+    t.first.Fill(T(-1));
+    for (uint64_t i(0); i < dynamic_size; ++i)
     {
-      t.At(i)                = T(data_[currentSentence_][currentWord_ + i]);
-      t.At(i + window_size_) = T(data_[currentSentence_][currentWord_ + window_size_ + i + 1]);
+      t.first.Set(i, T(data_[currentSentence_][currentWord_ + i]));
+      t.first.Set(i + dynamic_size, T(data_[currentSentence_][currentWord_ + dynamic_size + i + 1]));
     }
     currentWord_++;
     if (currentWord_ >= data_.at(currentSentence_).size() - (2 * window_size_))
@@ -147,8 +152,16 @@ public:
       currentWord_ = 0;
       currentSentence_++;
     }
-    return std::make_pair(t, label);
+    return t;
   }
+
+  std::pair<fetch::math::Tensor<T>, fetch::math::Tensor<T>> GetNext()
+  {
+    fetch::math::Tensor<T>                                    t(window_size_ * 2);
+    fetch::math::Tensor<T>                                    label(1);
+    std::pair<fetch::math::Tensor<T>, fetch::math::Tensor<T>> p(t, label);
+    return GetNext(p);
+  }  
 
   std::size_t VocabSize() const
   {
