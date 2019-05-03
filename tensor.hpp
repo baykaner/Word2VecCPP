@@ -46,7 +46,7 @@ public:
   Tensor(std::vector<SizeType>           shape   = std::vector<SizeType>(),
          std::vector<SizeType>           strides = std::vector<SizeType>(),
          std::vector<SizeType>           padding = std::vector<SizeType>(),
-         std::shared_ptr<std::vector<T>> storage = nullptr, SizeType offset = 0)
+         std::shared_ptr<T>              storage = nullptr, SizeType offset = 0)
     : shape_(std::move(shape))
     , padding_(std::move(padding))
     , input_strides_(std::move(strides))
@@ -100,13 +100,21 @@ public:
         dim *= shape_[i];
         dim += padding_[i];
       }
+      size_ = 1;
+      if (shape_.empty())
+	{
+	  size_ = 0;
+	}
+      for (SizeType d : shape_)
+	{
+	  size_ *= d;
+	}
       if (!storage_)
       {
         offset_ = 0;
         if (!shape_.empty())
         {
-          storage_ = std::make_shared<std::vector<T>>(
-              std::max(SizeType(1), DimensionSize(0) * shape_[0] + padding_[0]));
+          storage_ = std::shared_ptr<T>(new T[std::max(SizeType(1), DimensionSize(0) * shape_[0] + padding_[0])], std::default_delete<T[]>());
         }
       }
     }
@@ -125,10 +133,10 @@ public:
     copy.strides_ = this->strides_;
     copy.offset_  = this->offset_;
 
-    if (storage_)
-    {
-      copy.storage_ = std::make_shared<std::vector<T>>(*storage_);
-    }
+    // if (storage_)
+    // {
+    //   copy.storage_ = std::make_shared<T>(*storage_);
+    // }
     return copy;
   }
 
@@ -186,16 +194,7 @@ public:
   // TODO(private, 520): fix capitalisation (kepping it consistent with NDArray for now)
   SizeType size() const
   {
-    if (shape_.empty())
-    {
-      return 0;
-    }
-    SizeType n(1);
-    for (SizeType d : shape_)
-    {
-      n *= d;
-    }
-    return n;
+    return size_;
   }
 
   /**
@@ -265,26 +264,26 @@ public:
   //////////////////////////
 
   template <SizeType N, typename FirstIndex, typename... Indices>
-  SizeType OffsetForIndices(FirstIndex &&index, Indices &&... indices) const
+  constexpr SizeType OffsetForIndices(FirstIndex &&index, Indices &&... indices) const
   {
     return static_cast<SizeType>(index) * strides_[N] +
       OffsetForIndices<N + 1>(std::forward<Indices>(indices)...);
   }
   
   template <SizeType N, typename FirstIndex>
-  SizeType OffsetForIndices(FirstIndex &&index) const
+  constexpr SizeType OffsetForIndices(FirstIndex &&index) const
   {
     return static_cast<SizeType>(index) * strides_[N];
   }
 
   template <SizeType N, typename FirstIndex, typename... Indices>
-  std::pair<SizeType, T> OffsetAndValueForIndices(FirstIndex &&index, Indices &&... indices) const
+  constexpr std::pair<SizeType, T> OffsetAndValueForIndices(FirstIndex &&index, Indices &&... indices) const
   {
     return std::pair<SizeType, T>(OffsetAndValueForIndices<N + 1>(std::forward<Indices>(indices)...).first + static_cast<SizeType>(index) * strides_[N], OffsetAndValueForIndices<N + 1>(std::forward<Indices>(indices)...).second);
   }
   
   template <SizeType N, typename FirstIndex>
-  std::pair<SizeType, T> OffsetAndValueForIndices(FirstIndex &&index) const
+  constexpr std::pair<SizeType, T> OffsetAndValueForIndices(FirstIndex &&index) const
   {
     return std::pair<SizeType, T>(0, index);
   }
@@ -296,7 +295,7 @@ public:
   template <typename... Indices>
   T const &Get(Indices... indices) const
   {
-    return (*storage_)[OffsetForIndices<0>(indices...)];
+    return storage_.get()[OffsetForIndices<0>(indices...)];
   }
 
   ///////////////
@@ -307,7 +306,7 @@ public:
   void Set(Indices... indicesAndValuesPack)
   {    
     std::pair<SizeType, T> ret = OffsetAndValueForIndices<0>(indicesAndValuesPack...);
-    (*storage_)[ret.first] = ret.second;
+    storage_.get()[ret.first] = ret.second;
   }
   
   /*
@@ -356,7 +355,7 @@ public:
     return *this;
   }
 
-  std::shared_ptr<const std::vector<T>> Storage() const
+  std::shared_ptr<T> Storage() const
   {
     return storage_;
   }
@@ -534,8 +533,9 @@ private:
   std::vector<SizeType>           padding_;
   std::vector<SizeType>           strides_;
   std::vector<SizeType>           input_strides_;
-  std::shared_ptr<std::vector<T>> storage_;
+  std::shared_ptr<T>              storage_;
   SizeType                        offset_;
+  SizeType                        size_;
 };
 }  // namespace math
 }  // namespace fetch

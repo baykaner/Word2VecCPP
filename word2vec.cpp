@@ -97,13 +97,13 @@ void *TrainModelThread(void *id)
    * word - Stores the index of a word in the vocab table.
    * word_count - Stores the total number of training words processed.
    */
-  long long a, b, d, cw, word, last_word;
+  long long a, d, cw, word, last_word;
   long long c, target, label;
   real f, g;
-  
-  real *neu1 = (real *)calloc(layer1_size, sizeof(real));
-  real *neu1e = (real *)calloc(layer1_size, sizeof(real));
 
+  std::valarray<real> neu1(layer1_size);
+  std::valarray<real> neu1e(layer1_size);
+  
   auto sample = thread_loader.GetNext();
   unsigned int iterations = global_loader.Size() / num_threads;
   for (unsigned int i(0) ; i < iter * iterations ; ++i)
@@ -124,7 +124,7 @@ void *TrainModelThread(void *id)
 	  std::cout << id << " -- Reset" << std::endl;
 	  thread_loader.Reset();
 	}
-      sample = thread_loader.GetNext(sample);
+      thread_loader.GetNext(sample);
       
       word = sample.second.Get(0);
     
@@ -133,7 +133,6 @@ void *TrainModelThread(void *id)
       for (c = 0; c < layer1_size; c++)
 	neu1e[c] = 0;
       
-      b = rand() % window;
     
       if (cbow)
 	{
@@ -214,8 +213,6 @@ void *TrainModelThread(void *id)
 	    }
 	} 
     }
-  free(neu1);
-  free(neu1e);
   pthread_exit(NULL);
 }
 
