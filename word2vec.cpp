@@ -98,7 +98,7 @@ void *TrainModelThread(void *id)
    * word_count - Stores the total number of training words processed.
    */
   long long a, d, cw, word, last_word;
-  long long c, target, label;
+  long long target, label;
   real f, g;
 
   std::valarray<real> neu1(layer1_size);
@@ -108,15 +108,12 @@ void *TrainModelThread(void *id)
   unsigned int iterations = global_loader.Size() / num_threads;
   for (unsigned int i(0) ; i < iter * iterations ; ++i)
     {
-      if (i % 10000 == 0)
+      if (id == 0 &&i % 10000 == 0)
 	{
-	  if (id == 0)
-	    {
-	      alpha = starting_alpha * (((float)iter * iterations - i) / (iter * iterations));
-	      if (alpha < starting_alpha * 0.0001)
-		alpha = starting_alpha * 0.0001;	  
-	      std::cout << i << " / " << iter * iterations << " (" << (int)(100.0 * i / (iter * iterations)) << ") -- " << alpha << std::endl;
-	    }
+	  alpha = starting_alpha * (((float)iter * iterations - i) / (iter * iterations));
+	  if (alpha < starting_alpha * 0.0001)
+	    alpha = starting_alpha * 0.0001;
+	  std::cout << i << " / " << iter * iterations << " (" << (int)(100.0 * i / (iter * iterations)) << ") -- " << alpha << std::endl;
 	}
     
       if (thread_loader.IsDone())
@@ -124,16 +121,12 @@ void *TrainModelThread(void *id)
 	  std::cout << id << " -- Reset" << std::endl;
 	  thread_loader.Reset();
 	}
-      thread_loader.GetNext(sample);
-      
+      thread_loader.GetNext(sample);      
       word = sample.second.Get(0);
     
-      for (c = 0; c < layer1_size; c++)
-	neu1[c] = 0;
-      for (c = 0; c < layer1_size; c++)
-	neu1e[c] = 0;
+      neu1 = 0;
+      neu1e = 0;
       
-    
       if (cbow)
 	{
 	  cw = 0;
@@ -142,8 +135,7 @@ void *TrainModelThread(void *id)
 	      last_word = sample.first.Get(a);
 	      if (last_word >= 0)
 		{
-		  for (c = 0; c < layer1_size; c++)
-		    neu1[c] += syn0[last_word][c];
+		  neu1 += syn0[last_word];
 		  cw++;
 		}
 	    }
@@ -152,9 +144,8 @@ void *TrainModelThread(void *id)
 	    {        
 	      // neu1 was the sum of the context word vectors, and now becomes
 	      // their average. 
-	      for (c = 0; c < layer1_size; c++)
-		neu1[c] /= cw;
-                
+	      neu1 /= cw;
+		
 	      // NEGATIVE SAMPLING
 	      // Rather than performing backpropagation for every word in our 
 	      // vocabulary, we only perform it for the positive sample and a few
@@ -177,10 +168,8 @@ void *TrainModelThread(void *id)
 			  if (target == word) continue;
 			  label = 0;
 			}
-		      
-		      f = 0;
-		      for (c = 0; c < layer1_size; c++)
-			f += neu1[c] * syn1neg[target][c];
+		     
+		      f = (neu1 * syn1neg[target]).sum(); // Dot Product
 		
 		      if (f > MAX_EXP)
 			{
@@ -189,17 +178,13 @@ void *TrainModelThread(void *id)
 		      else if (f < -MAX_EXP)
 			{
 			  g = (label - 0) * alpha;
-			}			
+			}
 		      else
 			{
 			  g = (label - expTable[(int)((f + MAX_EXP) * (EXP_TABLE_SIZE / MAX_EXP / 2))]) * alpha;
-			}
-		
-		      for (c = 0; c < layer1_size; c++)
-			neu1e[c] += g * syn1neg[target][c];
-		
-		      for (c = 0; c < layer1_size; c++)
-			syn1neg[target][c] += g * neu1[c];
+			}				      
+		      neu1e += g * syn1neg[target];
+		      syn1neg[target] += g * neu1;
 		    }
 		}
 	      
@@ -207,8 +192,7 @@ void *TrainModelThread(void *id)
 		{
 		  last_word = sample.first.Get(a);
 		  if (last_word >= 0)
-		    for (c = 0; c < layer1_size; c++)
-		      syn0[last_word][c] += neu1e[c];
+		      syn0[last_word] += neu1e;
 		}
 	    }
 	} 

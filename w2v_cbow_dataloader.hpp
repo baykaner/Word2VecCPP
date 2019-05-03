@@ -26,6 +26,8 @@
 #include <string>
 #include <utility>
 
+#include "lcg.hpp"
+
 namespace fetch {
 namespace ml {
 
@@ -54,10 +56,6 @@ public:
 
   virtual bool IsDone() const
   {
-    if (data_.empty())
-    {
-      return true;
-    }
     if (currentSentence_ >= data_.size())
     {
       return true;
@@ -137,9 +135,7 @@ public:
     // This seems to be one of the most important tricks to get word2vec to train
     // The number of context words changes at each iteration with values in range [1 * 2,
     // window_size_ * 2]
-    // TODO : Add fast random generator (std::rand() accounts for 26sec
-    // Using target word as random value for the time being
-    uint64_t dynamic_size = data_[currentSentence_][currentWord_] % window_size_ + 1;
+    uint64_t dynamic_size = rng_() % window_size_ + 1;
     t.second.Set(0, T(data_[currentSentence_][currentWord_ + dynamic_size]));
     for (uint64_t i(0); i < dynamic_size; ++i)
       {
@@ -241,6 +237,7 @@ private:
   uint64_t                                                window_size_;
   std::map<std::string, std::pair<uint64_t, uint64_t>>    vocab_;
   std::vector<std::vector<uint64_t>>                      data_;
+  fetch::random::LinearCongruentialGenerator              rng_;
 };
 }  // namespace ml
 }  // namespace fetch

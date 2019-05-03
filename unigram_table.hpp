@@ -1,5 +1,6 @@
 #pragma once
 
+#include "lcg.hpp"
 
 class UnigramTable
 {
@@ -34,11 +35,12 @@ public:
       }
   }
   
-  uint64_t Sample() const
+  uint64_t Sample()
   {
-    return data_[rand() % data_.size()];
+    return data_[rng_() % data_.size()];
   }
   
 private:
   std::vector<uint64_t> data_;
+  fetch::random::LinearCongruentialGenerator rng_;
 };
