@@ -115,6 +115,7 @@ public:
         if (!shape_.empty())
         {
           storage_ = std::shared_ptr<T>(new T[std::max(SizeType(1), DimensionSize(0) * shape_[0] + padding_[0])], std::default_delete<T[]>());
+	  memset(storage_.get(), 0, std::max(SizeType(1), DimensionSize(0) * shape_[0] + padding_[0]) * sizeof(T));
         }
       }
     }
@@ -126,17 +127,8 @@ public:
    */
   SelfType Clone() const
   {
-    SelfType copy;
-
-    copy.shape_   = this->shape_;
-    copy.padding_ = this->padding_;
-    copy.strides_ = this->strides_;
-    copy.offset_  = this->offset_;
-
-    // if (storage_)
-    // {
-    //   copy.storage_ = std::make_shared<T>(*storage_);
-    // }
+    SelfType copy(this->shape_);
+    copy.Copy(*this);
     return copy;
   }
 
@@ -146,14 +138,20 @@ public:
    * @param other
    * @return
    */
-  void Copy(SelfType const &other)
+  Tensor &Copy(SelfType const &o)
   {
-    assert(other.size() == this->size());
+    assert(size() == o.size());
+    auto it1 = this->begin();
+    auto end = this->end();
+    auto it2 = o.begin();
 
-    // for (std::size_t j = 0; j < this->size(); ++j)
-    // {
-    //   this->At(j) = other.At(j);
-    // }
+    while (it1 != end)
+    {
+      *it1 = *it2;
+      ++it1;
+      ++it2;
+    }
+    return *this;
   }
 
   // TODO(private, 520) fix capitalisation (kepping it consistent with NDArray for now)
@@ -230,8 +228,6 @@ public:
     }
     return index;
   }
-
-  
 
   void Fill(T const &value)
   {
@@ -369,7 +365,7 @@ public:
     return *this;
   }
 
-  Tensor<T> &InlineAdd(Tensor<T> const &o)
+  Tensor<T> &InlineAdd(Tensor<T> const &o, T alpha = 1.0f)
   {
     assert(size() == o.size());
     auto it1 = this->begin();
@@ -378,7 +374,7 @@ public:
 
     while (it1 != end)
     {
-      *it1 += *it2;
+      *it1 += (*it2 * alpha);
       ++it1;
       ++it2;
     }

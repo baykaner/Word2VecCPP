@@ -8,7 +8,6 @@
 #include <map>
 #include <fstream>
 #include <string>
-#include <valarray>
 #include <vector>
 
 #include "tensor.hpp"
@@ -45,8 +44,8 @@ long long train_words = 0, word_count_actual = 0, iter = 5, file_size = 0, class
 
 real alpha = 0.025, starting_alpha, sample = 1e-3;
 
-std::vector<std::valarray<real>> syn0; // word vector
-std::vector<std::valarray<real>> syn1neg; // Weights
+std::vector<fetch::math::Tensor<real>> syn0; // word vector
+std::vector<fetch::math::Tensor<real>> syn1neg; // Weights
 real *expTable;
 clock_t start;
 
@@ -73,10 +72,10 @@ void InitUnigramTable()
 void InitNet()
 {
   while (syn0.size() < global_loader.VocabSize())
-    syn0.emplace_back(std::valarray<real>(layer1_size));
+    syn0.emplace_back(fetch::math::Tensor<real>(layer1_size));
 
   while (syn1neg.size() < global_loader.VocabSize())
-    syn1neg.emplace_back(std::valarray<real>(layer1_size));
+    syn1neg.emplace_back(fetch::math::Tensor<real>(layer1_size));
 
   for (auto &w : syn0)
     for (auto &e : w)
@@ -101,8 +100,8 @@ void *TrainModelThread(void *id)
   long long target, label;
   real f, g;
 
-  std::valarray<real> neu1(layer1_size);
-  std::valarray<real> neu1e(layer1_size);
+  fetch::math::Tensor<real> neu1(layer1_size);
+  fetch::math::Tensor<real> neu1e(layer1_size);
   
   auto sample = thread_loader.GetNext();
   unsigned int iterations = global_loader.Size() / num_threads;
@@ -124,8 +123,8 @@ void *TrainModelThread(void *id)
       thread_loader.GetNext(sample);      
       word = sample.second.Get(0);
     
-      neu1 = 0;
-      neu1e = 0;
+      neu1.Fill(0);
+      neu1e.Fill(0);
       
       if (cbow)
 	{
@@ -135,7 +134,7 @@ void *TrainModelThread(void *id)
 	      last_word = sample.first.Get(a);
 	      if (last_word >= 0)
 		{
-		  neu1 += syn0[last_word];
+		  neu1.InlineAdd(syn0[last_word]);
 		  cw++;
 		}
 	    }
@@ -144,7 +143,7 @@ void *TrainModelThread(void *id)
 	    {        
 	      // neu1 was the sum of the context word vectors, and now becomes
 	      // their average. 
-	      neu1 /= cw;
+	      neu1.InlineDivide(cw);
 		
 	      // NEGATIVE SAMPLING
 	      // Rather than performing backpropagation for every word in our 
@@ -168,8 +167,11 @@ void *TrainModelThread(void *id)
 			  if (target == word) continue;
 			  label = 0;
 			}
-		     
-		      f = (neu1 * syn1neg[target]).sum(); // Dot Product
+
+		      f = 0;
+		      for (int fi(0) ; fi < 100 ; ++fi) // Dot Product
+			f += syn1neg[target].Get(fi) * neu1.Get(fi);
+		      //		      f = (neu1 * syn1neg[target]).sum(); 
 		
 		      if (f > MAX_EXP)
 			{
@@ -183,8 +185,11 @@ void *TrainModelThread(void *id)
 			{
 			  g = (label - expTable[(int)((f + MAX_EXP) * (EXP_TABLE_SIZE / MAX_EXP / 2))]) * alpha;
 			}				      
-		      neu1e += g * syn1neg[target];
-		      syn1neg[target] += g * neu1;
+
+		      neu1e.InlineAdd(syn1neg[target], g);
+		      syn1neg[target].InlineAdd(neu1, g);
+		      // neu1e += g * syn1neg[target];
+		      // syn1neg[target] += g * neu1;
 		    }
 		}
 	      
@@ -192,7 +197,7 @@ void *TrainModelThread(void *id)
 		{
 		  last_word = sample.first.Get(a);
 		  if (last_word >= 0)
-		      syn0[last_word] += neu1e;
+		    syn0[last_word].InlineAdd(neu1e);
 		}
 	    }
 	} 
@@ -246,14 +251,14 @@ void TrainModel()
 	  {
 	    for (b = 0; b < layer1_size; b++)
 	      {
-		fwrite(&syn0[kvp.second.first][b], sizeof(real), 1, fo);
+		fwrite(&syn0[kvp.second.first].Get(b), sizeof(real), 1, fo);
 	      }
 	  }
 	else
 	  {
 	    for (b = 0; b < layer1_size; b++)
 	      {
-		fprintf(fo, "%lf ", syn0[kvp.second.first][b]);
+		fprintf(fo, "%lf ", syn0[kvp.second.first].Get(b));
 	      }
 	  }
 	fprintf(fo, "\n");
@@ -283,7 +288,7 @@ int main(int argc, char **argv) {
   int i;
   if (argc == 1)
     return 0;
-
+  
   output_file[0] = 0;
   save_vocab_file[0] = 0;
   read_vocab_file[0] = 0;

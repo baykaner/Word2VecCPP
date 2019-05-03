@@ -31,14 +31,14 @@ class TensorIterator
 public: // private:
   TensorIterator(std::vector<SizeType> const &shape, std::vector<SizeType> const &strides,
                  std::vector<SizeType> const &padding, std::vector<SizeType> const &coordinate,
-                 std::shared_ptr<std::vector<T>> const &storage, SizeType const &offset)
+                 std::shared_ptr<T> const &storage, SizeType const &offset)
     : shape_(shape)
     , strides_(strides)
     , padding_(padding)
     , coordinate_(coordinate)
   {
-    pointer_          = storage->data() + offset;
-    original_pointer_ = storage->data() + offset;
+    pointer_          = storage.get() + offset;
+    original_pointer_ = storage.get() + offset;
   }
 
 public:
@@ -81,9 +81,9 @@ public:
   }
 
 private:
-  const std::vector<SizeType> shape_;
-  const std::vector<SizeType> strides_;
-  const std::vector<SizeType> padding_;
+  const std::vector<SizeType> &shape_;
+  const std::vector<SizeType> &strides_;
+  const std::vector<SizeType> &padding_;
   std::vector<SizeType>       coordinate_;
   T *                         pointer_;
   T *                         original_pointer_;
