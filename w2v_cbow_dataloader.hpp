@@ -32,10 +32,10 @@ namespace fetch {
 namespace ml {
 
 template <typename T>
-class CBOWLoader : public DataLoader<fetch::math::Tensor<T>, fetch::math::Tensor<T>>
+class CBOWLoader : public DataLoader<fetch::math::Tensor<T, 2>, fetch::math::Tensor<T, 2>>
 {
 public:
-  using ReturnType = std::pair<fetch::math::Tensor<T>, fetch::math::Tensor<T>>;
+  using ReturnType = std::pair<fetch::math::Tensor<T, 2>, fetch::math::Tensor<T, 2>>;
   
 public:
   CBOWLoader(uint64_t window_size)
@@ -139,15 +139,15 @@ public:
     // The number of context words changes at each iteration with values in range [1 * 2,
     // window_size_ * 2]
     uint64_t dynamic_size = rng_() % window_size_ + 1;
-    t.second.Set(0, T(data_[currentSentence_][currentWord_ + dynamic_size]));
+    t.second.Set(0, 0, T(data_[currentSentence_][currentWord_ + dynamic_size]));
     for (uint64_t i(0); i < dynamic_size; ++i)
       {
-	t.first.Set(i, T(data_[currentSentence_][currentWord_ + i]));
-	t.first.Set(i + dynamic_size, T(data_[currentSentence_][currentWord_ + dynamic_size + i + 1]));
+	t.first.Set(0, i, T(data_[currentSentence_][currentWord_ + i]));
+	t.first.Set(0, i + dynamic_size, T(data_[currentSentence_][currentWord_ + dynamic_size + i + 1]));
       }
     for (uint64_t i(dynamic_size * 2); i < t.first.size() ; ++i)
       {
-	t.first.Set(i, -1);
+	t.first.Set(0, i, -1);
       }
     currentWord_++;
     if (currentWord_ >= data_.at(currentSentence_).size() - (2 * window_size_))
@@ -160,8 +160,8 @@ public:
 
   ReturnType GetNext()
   {
-    fetch::math::Tensor<T> t(window_size_ * 2);
-    fetch::math::Tensor<T> label(1);
+    fetch::math::Tensor<T, 2> t({1, window_size_ * 2});
+    fetch::math::Tensor<T, 2> label({1, 1});
     ReturnType p(t, label);
     return GetNext(p);
   }  

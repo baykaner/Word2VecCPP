@@ -33,7 +33,7 @@ class Tensor;
 namespace fetch {
 namespace math {
 
-  template <typename T, uint64_t RANK = 1>
+template <typename T, uint64_t RANK>
 class Tensor
 {
 public:
@@ -291,6 +291,8 @@ public:
   template <typename... Indices>
   T const &Get(Indices... indices) const
   {
+    static_assert(sizeof...(Indices) == RANK, "Number of indexes in Get() doesn't match tensor rank");
+    assert(sizeof...(Indices) == shape_.size());
     return storage_.get()[OffsetForIndices<0>(indices...)];
   }
 
@@ -300,7 +302,9 @@ public:
 
   template <typename... Indices>
   void Set(Indices... indicesAndValuesPack)
-  {    
+  {
+    static_assert(sizeof...(Indices) == RANK + 1, "Number of indexes in Set() doesn't match tensor rank");
+    assert(sizeof...(Indices) == shape_.size() + 1);
     std::pair<SizeType, T> ret = OffsetAndValueForIndices<0>(indicesAndValuesPack...);
     storage_.get()[ret.first] = ret.second;
   }
