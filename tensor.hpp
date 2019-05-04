@@ -17,7 +17,7 @@
 //
 //------------------------------------------------------------------------------
 
-template <typename T>
+template <typename T, uint64_t RANK>
 class Tensor;
 
 #include "tensor_iterator.hpp"
@@ -33,13 +33,13 @@ class Tensor;
 namespace fetch {
 namespace math {
 
-template <typename T>
+  template <typename T, uint64_t RANK = 1>
 class Tensor
 {
 public:
   using Type                             = T;
   using SizeType                         = std::uint64_t;
-  using SelfType                         = Tensor<T>;
+  using SelfType                         = Tensor<T, RANK>;
   static const SizeType DefaultAlignment = 8;  // Arbitrary picked
 
 public:
@@ -308,55 +308,55 @@ public:
   /*
    * return a slice of the tensor along the first dimension
    */
-  Tensor<T> Slice(SizeType i) const
-  {
-    assert(shape_.size() > 1 && i < shape_[0]);
-    Tensor<T> ret(std::vector<SizeType>(std::next(shape_.begin()), shape_.end()),     /* shape */
-                  std::vector<SizeType>(std::next(strides_.begin()), strides_.end()), /* stride */
-                  std::vector<SizeType>(std::next(padding_.begin()), padding_.end()), /* padding */
-                  storage_, offset_ + i * DimensionSize(0));
-    ret.strides_ = std::vector<SizeType>(std::next(strides_.begin()), strides_.end());
-    ret.padding_ = std::vector<SizeType>(std::next(padding_.begin()), padding_.end());
-    return ret;
-  }
+  // Tensor<T> Slice(SizeType i) const
+  // {
+  //   assert(shape_.size() > 1 && i < shape_[0]);
+  //   Tensor<T> ret(std::vector<SizeType>(std::next(shape_.begin()), shape_.end()),     /* shape */
+  //                 std::vector<SizeType>(std::next(strides_.begin()), strides_.end()), /* stride */
+  //                 std::vector<SizeType>(std::next(padding_.begin()), padding_.end()), /* padding */
+  //                 storage_, offset_ + i * DimensionSize(0));
+  //   ret.strides_ = std::vector<SizeType>(std::next(strides_.begin()), strides_.end());
+  //   ret.padding_ = std::vector<SizeType>(std::next(padding_.begin()), padding_.end());
+  //   return ret;
+  // }
 
   /*
    * Add a dummy leading dimension
    * Ex: [4, 5, 6].Unsqueeze() -> [1, 4, 5, 6]
    */
-  Tensor<T> &Unsqueeze()
-  {
-    shape_.insert(shape_.begin(), 1);
-    strides_.insert(strides_.begin(), strides_.front() * shape_[1]);
-    padding_.insert(padding_.begin(), 0);
-    return *this;
-  }
+  // Tensor<T> &Unsqueeze()
+  // {
+  //   shape_.insert(shape_.begin(), 1);
+  //   strides_.insert(strides_.begin(), strides_.front() * shape_[1]);
+  //   padding_.insert(padding_.begin(), 0);
+  //   return *this;
+  // }
 
-  /*
-   * Inverse of unsqueze : Collapse a empty leading dimension
-   */
-  Tensor<T> Squeeze()
-  {
-    if (shape_.front() == 1)
-    {
-      shape_.erase(shape_.begin());
-      strides_.erase(strides_.begin());
-      padding_.erase(padding_.begin());
-    }
-    else
-    {
-      throw std::runtime_error("Can't squeeze tensor with leading dimension of size " +
-                               std::to_string(shape_[0]));
-    }
-    return *this;
-  }
+  // /*
+  //  * Inverse of unsqueze : Collapse a empty leading dimension
+  //  */
+  // Tensor<T> Squeeze()
+  // {
+  //   if (shape_.front() == 1)
+  //   {
+  //     shape_.erase(shape_.begin());
+  //     strides_.erase(strides_.begin());
+  //     padding_.erase(padding_.begin());
+  //   }
+  //   else
+  //   {
+  //     throw std::runtime_error("Can't squeeze tensor with leading dimension of size " +
+  //                              std::to_string(shape_[0]));
+  //   }
+  //   return *this;
+  // }
 
   std::shared_ptr<T> Storage() const
   {
     return storage_;
   }
 
-  Tensor<T> &InlineAdd(T const &o)
+  SelfType &InlineAdd(T const &o)
   {
     for (T &e : *this)
     {
@@ -365,7 +365,7 @@ public:
     return *this;
   }
 
-  Tensor<T> &InlineAdd(Tensor<T> const &o, T alpha = 1.0f)
+  SelfType &InlineAdd(Tensor<T, RANK> const &o, T alpha = 1.0f)
   {
     assert(size() == o.size());
     auto it1 = this->begin();
@@ -381,7 +381,7 @@ public:
     return *this;
   }
 
-  Tensor<T> &InlineSubtract(T const &o)
+  SelfType &InlineSubtract(T const &o)
   {
     for (T &e : *this)
     {
@@ -390,7 +390,7 @@ public:
     return *this;
   }
 
-  Tensor<T> &InlineSubtract(Tensor<T> const &o)
+  SelfType &InlineSubtract(Tensor<T, RANK> const &o)
   {
     assert(size() == o.size());
     auto it1 = this->begin();
@@ -406,7 +406,7 @@ public:
     return *this;
   }
 
-  Tensor<T> &InlineMultiply(T const &o)
+  SelfType &InlineMultiply(T const &o)
   {
     for (T &e : *this)
     {
@@ -415,7 +415,7 @@ public:
     return *this;
   }
 
-  Tensor<T> &InlineMultiply(Tensor<T> const &o)
+  SelfType &InlineMultiply(Tensor<T, RANK> const &o)
   {
     assert(size() == o.size());
     auto it1 = this->begin();
@@ -431,7 +431,7 @@ public:
     return *this;
   }
 
-  Tensor<T> &InlineDivide(T const &o)
+  SelfType &InlineDivide(T const &o)
   {
     for (T &e : *this)
     {
@@ -440,7 +440,7 @@ public:
     return *this;
   }
 
-  Tensor<T> &InlineDivide(Tensor<T> const &o)
+  SelfType &InlineDivide(Tensor<T, RANK> const &o)
   {
     assert(size() == o.size());
     auto it1 = this->begin();
@@ -461,10 +461,10 @@ public:
     return std::accumulate(begin(), end(), T(0));
   }
 
-  Tensor<T> Transpose() const
+  SelfType Transpose() const
   {
     assert(shape_.size() == 2);
-    Tensor<T> ret(std::vector<SizeType>({shape_[1], shape_[0]}), /* shape */
+    SelfType ret(std::vector<SizeType>({shape_[1], shape_[0]}), /* shape */
                   std::vector<SizeType>(),                       /* stride */
                   std::vector<SizeType>(),                       /* padding */
                   storage_, offset_);
@@ -509,20 +509,20 @@ public:
    * @param other
    * @return
    */
-  bool operator==(Tensor const &other) const
-  {
-    bool ret = false;
-    if ((this->size() == other.size()) && (this->shape_ == other.shape()))
-    {
-      ret = this->AllClose(other);
-    }
-    return ret;
-  }
+  // bool operator==(Tensor const &other) const
+  // {
+  //   bool ret = false;
+  //   if ((this->size() == other.size()) && (this->shape_ == other.shape()))
+  //   {
+  //     ret = this->AllClose(other);
+  //   }
+  //   return ret;
+  // }
 
-  bool operator!=(Tensor const &other) const
-  {
-    return !(*this == other);
-  }
+  // bool operator!=(Tensor const &other) const
+  // {
+  //   return !(*this == other);
+  // }
 
 private:
   std::vector<SizeType>           shape_;

@@ -26,7 +26,7 @@ class TensorIterator
 {
   using Type = T;
 
-  friend class Tensor<T>;
+  //  friend class Tensor<T>;
 
 public: // private:
   TensorIterator(std::vector<SizeType> const &shape, std::vector<SizeType> const &strides,
