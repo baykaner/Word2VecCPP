@@ -35,6 +35,9 @@ template <typename T>
 class CBOWLoader : public DataLoader<fetch::math::Tensor<T>, fetch::math::Tensor<T>>
 {
 public:
+  using ReturnType = std::pair<fetch::math::Tensor<T>, fetch::math::Tensor<T>>;
+  
+public:
   CBOWLoader(uint64_t window_size)
     : currentSentence_(0)
     , currentWord_(0)
@@ -130,7 +133,7 @@ public:
     vocab_ = std::move(new_loader.vocab_);
   }
 
-  std::pair<fetch::math::Tensor<T>, fetch::math::Tensor<T>> &GetNext(std::pair<fetch::math::Tensor<T>, fetch::math::Tensor<T>> &t)
+  ReturnType &GetNext(ReturnType &t)
   {
     // This seems to be one of the most important tricks to get word2vec to train
     // The number of context words changes at each iteration with values in range [1 * 2,
@@ -155,11 +158,11 @@ public:
     return t;
   }
 
-  std::pair<fetch::math::Tensor<T>, fetch::math::Tensor<T>> GetNext()
+  ReturnType GetNext()
   {
-    fetch::math::Tensor<T>                                    t(window_size_ * 2);
-    fetch::math::Tensor<T>                                    label(1);
-    std::pair<fetch::math::Tensor<T>, fetch::math::Tensor<T>> p(t, label);
+    fetch::math::Tensor<T> t(window_size_ * 2);
+    fetch::math::Tensor<T> label(1);
+    ReturnType p(t, label);
     return GetNext(p);
   }  
 
