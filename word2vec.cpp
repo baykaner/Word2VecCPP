@@ -14,6 +14,8 @@
 #include "w2v_cbow_dataloader.hpp"
 #include "unigram_table.hpp"
 
+#include "averaged_embeddings.hpp"
+
 using namespace fetch::ml;
 
 #define MAX_STRING 100
@@ -52,6 +54,8 @@ clock_t start;
 int hs = 0, negative = 5;
 const int table_size = 1e8;
 int *table;
+
+fetch::ml::ops::AveragedEmbeddings<fetch::math::Tensor<float, 2>> embeddings_module(1, 1);
 
 std::string readFile(std::string const &path)
 {
@@ -252,7 +256,6 @@ void TrainModel()
 		real v = syn0[kvp.second.first].Get(b);
 		fwrite(&v, sizeof(real), 1, fo);
 	      }
-	    std::cout << std::endl;
 	  }
 	else
 	  {

@@ -54,9 +54,9 @@ public:
   friend class Tensor<T, RANK+1>; // let's us access private member of slice (Tensor<T, RANK-1>)
   
 public:
-  Tensor(std::vector<SizeType>           shape   = std::vector<SizeType>(),
-         std::vector<SizeType>           strides = std::vector<SizeType>(),
-         std::vector<SizeType>           padding = std::vector<SizeType>(),
+  Tensor(std::array<SizeType, RANK>           shape,
+         std::array<SizeType, RANK>           strides = std::array<SizeType, RANK>{{SizeType(-1)}},
+	 std::array<SizeType, RANK>           padding = std::array<SizeType, RANK>{{SizeType(-1)}},
          std::shared_ptr<T>              storage = nullptr, SizeType offset = 0)
     : storage_(std::move(storage))
     , offset_(offset)
@@ -64,9 +64,9 @@ public:
     assert(shape.size() == RANK);
     assert(padding.empty() || padding.size() == shape.size());
     assert(strides.empty() || strides.size() == shape.size());
-
+          
     std::copy(shape.begin(), shape.end(), shape_.begin());
-    if (!strides.empty())
+    if (strides[0] != SizeType(-1))
       {
 	std::copy(strides.begin(), strides.end(), input_strides_.begin());
       }
@@ -74,7 +74,7 @@ public:
       {
 	input_strides_.fill(1);
       }
-    if (!padding.empty())
+    if (padding[0] != SizeType(-1))
       {
 	std::copy(padding.begin(), padding.end(), padding_.begin());
       }
@@ -101,10 +101,10 @@ public:
 	  if (!shape_.empty())
 	    {
 	      storage_ = std::shared_ptr<T>(new T[Capacity()], std::default_delete<T[]>());
-	      memset(storage_.get(), 0, Capacity() * sizeof(T));
+	      memset(static_cast<void*>(storage_.get()), 0, Capacity() * sizeof(T));
 	    }
 	}
-      size_ = std::accumulate(shape_.begin(), shape_.end(), 1, std::multiplies<T>());
+      size_ = std::accumulate(shape_.begin(), shape_.end(), SizeType(1), std::multiplies<SizeType>());
   }
 
   Tensor(Tensor const &t)     = default;
@@ -224,7 +224,7 @@ public:
 
   SizeType Capacity() const
   {
-    return std::max(1ull, DimensionSize(0) * shape_[0] + padding_[0]);
+    return std::max(SizeType(1), DimensionSize(0) * shape_[0] + padding_[0]);
   }
 
   // TODO(private, 520): fix capitalisation (kepping it consistent with NDArray for now)
@@ -296,28 +296,28 @@ public:
   template <SizeType N, typename FirstIndex, typename... Indices>
   constexpr SizeType OffsetForIndices(FirstIndex &&index, Indices &&... indices) const
   {
-    static_assert(std::is_integral<typename std::remove_reference<FirstIndex>::type>::value, "Can't index tensor using non integer type");
+    //    static_assert(std::is_integral<typename std::remove_reference<FirstIndex>::type>::value, "Can't index tensor using non integer type");
     return static_cast<SizeType>(index) * strides_[N] + OffsetForIndices<N + 1>(std::forward<Indices>(indices)...);
   }
   
   template <SizeType N, typename FirstIndex>
   constexpr SizeType OffsetForIndices(FirstIndex &&index) const
   {
-    static_assert(std::is_integral<typename std::remove_reference<FirstIndex>::type>::value, "Can't index tensor using non integer type");
+    //    static_assert(std::is_integral<typename std::remove_reference<FirstIndex>::type>::value, "Can't index tensor using non integer type");
     return static_cast<SizeType>(index) * strides_[N];
   }
 
   template <SizeType N, typename FirstIndex, typename... Indices>
   constexpr std::pair<SizeType, T> OffsetAndValueForIndices(FirstIndex &&index, Indices &&... indices) const
   {
-    static_assert(std::is_integral<typename std::remove_reference<FirstIndex>::type>::value, "Can't index tensor using non integer type");
+    //    static_assert(std::is_integral<typename std::remove_reference<FirstIndex>::type>::value, "Can't index tensor using non integer type");
     return std::pair<SizeType, T>(OffsetAndValueForIndices<N + 1>(std::forward<Indices>(indices)...).first + static_cast<SizeType>(index) * strides_[N], OffsetAndValueForIndices<N + 1>(std::forward<Indices>(indices)...).second);
   }
   
   template <SizeType N, typename FirstIndex>
   constexpr std::pair<SizeType, T> OffsetAndValueForIndices(FirstIndex &&index) const
   {
-    static_assert(std::is_integral<typename std::remove_reference<FirstIndex>::type>::value, "Can't index tensor using non integer type");
+    //    static_assert(std::is_integral<typename std::remove_reference<FirstIndex>::type>::value, "Can't index tensor using non integer type");
     return std::pair<SizeType, T>(0, index);
   }
 
@@ -352,9 +352,16 @@ public:
   Tensor<T, RANK-1> Slice(SizeType i) const
   {
     assert(shape_.size() > 1 && i < shape_[0]);
-    Tensor<T, RANK-1> ret(std::vector<SizeType>(std::next(shape_.begin()), shape_.end()),     /* shape */
-			  std::vector<SizeType>(std::next(input_strides_.begin()), input_strides_.end()), /* stride */
-			  std::vector<SizeType>(std::next(padding_.begin()), padding_.end()), /* padding */
+
+    std::array<SizeType, RANK-1> slice_shape;
+    std::array<SizeType, RANK-1> slice_strides;
+    std::array<SizeType, RANK-1> slice_padding;
+
+    std::copy(std::next(shape_.begin()), shape_.end(), slice_shape.begin());
+    std::copy(std::next(input_strides_.begin()), input_strides_.end(), slice_strides.begin());
+    std::copy(std::next(padding_.begin()), padding_.end(), slice_padding.begin());
+    
+    Tensor<T, RANK-1> ret(slice_shape, slice_strides, slice_padding,
 			  storage_, offset_ + i * DimensionSize(0));
     
     return ret;
@@ -405,7 +412,7 @@ public:
     return *this;
   }
 
-  SelfType &InlineAdd(Tensor<T, RANK> const &o, T alpha = 1.0f)
+  SelfType &InlineAdd(Tensor<T, RANK> const &o, T alpha = T(1.0f))
   {
     assert(size() == o.size());
     auto it1 = this->begin();
@@ -414,6 +421,7 @@ public:
 
     while (it1 != end)
     {
+      
       *it1 += (*it2 * alpha);
       ++it1;
       ++it2;
@@ -498,18 +506,18 @@ public:
 
   T Sum() const
   {
-    return 0;//std::accumulate(begin(), end(), T(0));
+    return std::accumulate(begin(), end(), T(0));
   }
 
   SelfType Transpose() const
   {
     assert(shape_.size() == 2);
-    SelfType ret(std::vector<SizeType>({shape_[1], shape_[0]}), /* shape */
-                  std::vector<SizeType>(),                       /* stride */
-                  std::vector<SizeType>(),                       /* padding */
-                  storage_, offset_);
-    ret.strides_ = std::vector<SizeType>(strides_.rbegin(), strides_.rend());
-    ret.padding_ = std::vector<SizeType>(padding_.rbegin(), padding_.rend());
+    SelfType ret({shape_[1], shape_[0]}, /* shape */
+		 {},                       /* stride */
+		 {},                       /* padding */
+		 storage_, offset_);
+    std::copy(strides_.rbegin(), strides_.rend(), ret.strides_.begin());
+    std::copy(padding_.rbegin(), padding_.rend(), ret.padding_.begin());
     return ret;
   }
 
