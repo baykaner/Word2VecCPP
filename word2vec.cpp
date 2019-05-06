@@ -39,13 +39,13 @@ char save_vocab_file[MAX_STRING], read_vocab_file[MAX_STRING];
 
 int binary = 0, cbow = 1, debug_mode = 2, window = 5, min_count = 5, num_threads = 12, min_reduce = 1;
 
-unsigned long long vocab_max_size = 1000, layer1_size = 100;
+unsigned long long vocab_max_size = 1000, layer1_size = 200;
 unsigned long long train_words = 0, word_count_actual = 0, iter = 5, file_size = 0, classes = 0;
 
 real alpha = 0.025, starting_alpha, sample = 1e-3;
 
-std::vector<fetch::math::Tensor<real, 2>> syn0; // word vector
-std::vector<fetch::math::Tensor<real, 2>> syn1neg; // Weights
+std::vector<fetch::math::Tensor<real, 1>> syn0; // word vector
+std::vector<fetch::math::Tensor<real, 1>> syn1neg; // Weights
 real *expTable;
 clock_t start;
 
@@ -72,10 +72,10 @@ void InitUnigramTable()
 void InitNet()
 {
   while (syn0.size() < global_loader.VocabSize())
-    syn0.emplace_back(fetch::math::Tensor<real, 2>({1, layer1_size}));
+    syn0.emplace_back(fetch::math::Tensor<real, 1>({layer1_size}));
 
   while (syn1neg.size() < global_loader.VocabSize())
-    syn1neg.emplace_back(fetch::math::Tensor<real, 2>({1, layer1_size}));
+    syn1neg.emplace_back(fetch::math::Tensor<real, 1>({layer1_size}));
 
   for (auto &w : syn0)
     for (auto &e : w)
@@ -100,8 +100,8 @@ void *TrainModelThread(void *id)
   long long target, label;
   real f, g;
 
-  fetch::math::Tensor<real, 2> neu1({1, layer1_size});
-  fetch::math::Tensor<real, 2> neu1e({1, layer1_size});
+  fetch::math::Tensor<real, 1> neu1({layer1_size});
+  fetch::math::Tensor<real, 1> neu1e({layer1_size});
   
   auto sample = thread_loader.GetNext();
   unsigned int iterations = global_loader.Size() / num_threads;
@@ -169,9 +169,8 @@ void *TrainModelThread(void *id)
 			}
 
 		      f = 0;
-		      for (int fi(0) ; fi < 100 ; ++fi) // Dot Product
-			f += syn1neg[target].Get(0, fi) * neu1.Get(0, fi);
-		      //		      f = (neu1 * syn1neg[target]).sum(); 
+		      for (int fi(0) ; fi < layer1_size ; ++fi) // Dot Product
+			f += syn1neg[target].Get(fi) * neu1.Get(fi);
 		
 		      if (f > MAX_EXP)
 			{
@@ -188,8 +187,6 @@ void *TrainModelThread(void *id)
 
 		      neu1e.InlineAdd(syn1neg[target], g);
 		      syn1neg[target].InlineAdd(neu1, g);
-		      // neu1e += g * syn1neg[target];
-		      // syn1neg[target] += g * neu1;
 		    }
 		}
 	      
@@ -211,7 +208,8 @@ void *TrainModelThread(void *id)
  */
 void TrainModel()
 {
-  long a, b;
+  long a;
+  unsigned long long b;
   FILE *fo;
   
   pthread_t *pt = (pthread_t *)malloc(num_threads * sizeof(pthread_t));
@@ -251,14 +249,16 @@ void TrainModel()
 	  {
 	    for (b = 0; b < layer1_size; b++)
 	      {
-		fwrite(&syn0[kvp.second.first].Get(0, b), sizeof(real), 1, fo);
+		real v = syn0[kvp.second.first].Get(b);
+		fwrite(&v, sizeof(real), 1, fo);
 	      }
+	    std::cout << std::endl;
 	  }
 	else
 	  {
 	    for (b = 0; b < layer1_size; b++)
 	      {
-		fprintf(fo, "%lf ", syn0[kvp.second.first].Get(0, b));
+		fprintf(fo, "%lf ", syn0[kvp.second.first].Get(b));
 	      }
 	  }
 	fprintf(fo, "\n");

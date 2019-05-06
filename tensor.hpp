@@ -17,23 +17,32 @@
 //
 //------------------------------------------------------------------------------
 
-template <typename T, uint64_t RANK>
-class Tensor;
-
-#include "tensor_iterator.hpp"
-
+#include <cassert>
+#include <cstdint>
+#include <array>
 #include <iostream>
 #include <iomanip>
 #include <memory>
 #include <numeric>
 #include <random>
 #include <sstream>
+#include <string.h> // memset
 #include <vector>
 
 namespace fetch {
 namespace math {
+  template <typename T, std::uint64_t RANK>
+  class Tensor;
+}
+}
 
-template <typename T, uint64_t RANK>
+
+#include "tensor_iterator.hpp"
+
+namespace fetch {
+namespace math {
+
+  template <typename T, std::uint64_t RANK>
 class Tensor
 {
 public:
@@ -42,26 +51,60 @@ public:
   using SelfType                         = Tensor<T, RANK>;
   static const SizeType DefaultAlignment = 8;  // Arbitrary picked
 
+  friend class Tensor<T, RANK+1>; // let's us access private member of slice (Tensor<T, RANK-1>)
+  
 public:
   Tensor(std::vector<SizeType>           shape   = std::vector<SizeType>(),
          std::vector<SizeType>           strides = std::vector<SizeType>(),
          std::vector<SizeType>           padding = std::vector<SizeType>(),
          std::shared_ptr<T>              storage = nullptr, SizeType offset = 0)
-    : shape_(std::move(shape))
-    , padding_(std::move(padding))
-    , input_strides_(std::move(strides))
-    , storage_(std::move(storage))
+    : storage_(std::move(storage))
     , offset_(offset)
   {
-    // ASSERT(padding.empty() || padding.size() == shape.size());
-    // ASSERT(strides.empty() || strides.size() == shape.size());
-    Init(input_strides_, padding_);
-  }
+    assert(shape.size() == RANK);
+    assert(padding.empty() || padding.size() == shape.size());
+    assert(strides.empty() || strides.size() == shape.size());
 
-  Tensor(SizeType size)
-    : shape_({size})
-  {
-    Init(strides_, padding_);
+    std::copy(shape.begin(), shape.end(), shape_.begin());
+    if (!strides.empty())
+      {
+	std::copy(strides.begin(), strides.end(), input_strides_.begin());
+      }
+    else
+      {
+	input_strides_.fill(1);
+      }
+    if (!padding.empty())
+      {
+	std::copy(padding.begin(), padding.end(), padding_.begin());
+      }
+    else
+      {
+	padding_.fill(0);
+	if (((input_strides_.back() * shape_.back()) % DefaultAlignment) != 0)
+	  {
+	    padding_[RANK - 1] = DefaultAlignment - ((input_strides_.back() * shape_.back()) % DefaultAlignment);
+	  }
+      }
+    strides_[RANK-1] = input_strides_[RANK-1];
+    if (RANK > 1)
+      {
+	for (std::uint64_t i(RANK-2) ; i > 0 ; --i)
+	  {
+	    strides_[i] = (strides_[i+1] * shape_[i+1] + padding_[i+1]) * input_strides_[i];
+	  }
+	strides_[0] = (strides_[1] * shape_[1] + padding_[1]) * input_strides_[0];
+      }
+      if (!storage_)
+	{
+	  offset_ = 0;
+	  if (!shape_.empty())
+	    {
+	      storage_ = std::shared_ptr<T>(new T[Capacity()], std::default_delete<T[]>());
+	      memset(storage_.get(), 0, Capacity() * sizeof(T));
+	    }
+	}
+      size_ = std::accumulate(shape_.begin(), shape_.end(), 1, std::multiplies<T>());
   }
 
   Tensor(Tensor const &t)     = default;
@@ -69,11 +112,6 @@ public:
   Tensor &operator=(Tensor const &other) = default;
   Tensor &operator=(Tensor &&) = default;
 
-  /**
-   * Initialises default values for stride padding etc.
-   * @param strides
-   * @param padding
-   */
   void Init(std::vector<SizeType> const &strides = std::vector<SizeType>(),
             std::vector<SizeType> const &padding = std::vector<SizeType>())
   {
@@ -155,17 +193,17 @@ public:
   }
 
   // TODO(private, 520) fix capitalisation (kepping it consistent with NDArray for now)
-  std::vector<SizeType> const &shape() const
+  std::array<SizeType, RANK> const &shape() const
   {
     return shape_;
   }
 
-  std::vector<SizeType> const &Strides() const
+  std::array<SizeType, RANK> const &Strides() const
   {
     return input_strides_;
   }
 
-  std::vector<SizeType> const &Padding() const
+  std::array<SizeType, RANK> const &Padding() const
   {
     return padding_;
   }
@@ -186,7 +224,7 @@ public:
 
   SizeType Capacity() const
   {
-    return storage_ ? storage_->size() : 0;
+    return std::max(1ull, DimensionSize(0) * shape_[0] + padding_[0]);
   }
 
   // TODO(private, 520): fix capitalisation (kepping it consistent with NDArray for now)
@@ -195,39 +233,39 @@ public:
     return size_;
   }
 
-  /**
-   * Return the coordinates of the nth element in N dimensions
-   * @param element     ordinal position of the element we want
-   * @return            coordinate of said element in the tensor
-   */
-  std::vector<SizeType> IndicesOfElement(SizeType element) const
-  {
-    // ASSERT(element < size());
-    std::vector<SizeType> results(shape_.size());
-    results.back() = element;
-    for (SizeType i(shape_.size() - 1); i > 0; --i)
-    {
-      results[i - 1] = results[i] / shape_[i];
-      results[i] %= shape_[i];
-    }
-    return results;
-  }
+  // /**
+  //  * Return the coordinates of the nth element in N dimensions
+  //  * @param element     ordinal position of the element we want
+  //  * @return            coordinate of said element in the tensor
+  //  */
+  // std::vector<SizeType> IndicesOfElement(SizeType element) const
+  // {
+  //   // ASSERT(element < size());
+  //   std::vector<SizeType> results(shape_.size());
+  //   results.back() = element;
+  //   for (SizeType i(shape_.size() - 1); i > 0; --i)
+  //   {
+  //     results[i - 1] = results[i] / shape_[i];
+  //     results[i] %= shape_[i];
+  //   }
+  //   return results;
+  // }
 
-  /**
-   * Return the offset of element at specified coordinates in the low level memory array
-   * @param indices     coordinate of requested element in the tensor
-   * @return            offset in low level memory array
-   */
-  SizeType OffsetOfElement(std::vector<SizeType> const &indices) const
-  {
-    SizeType index(offset_);
-    for (SizeType i(0); i < indices.size(); ++i)
-    {
-      // ASSERT(indices[i] < shape_[i]);
-      index += indices[i] * DimensionSize(i);
-    }
-    return index;
-  }
+  // /**
+  //  * Return the offset of element at specified coordinates in the low level memory array
+  //  * @param indices     coordinate of requested element in the tensor
+  //  * @return            offset in low level memory array
+  //  */
+  // SizeType OffsetOfElement(std::vector<SizeType> const &indices) const
+  // {
+  //   SizeType index(offset_);
+  //   for (SizeType i(0); i < indices.size(); ++i)
+  //   {
+  //     // ASSERT(indices[i] < shape_[i]);
+  //     index += indices[i] * DimensionSize(i);
+  //   }
+  //   return index;
+  // }
 
   void Fill(T const &value)
   {
@@ -241,18 +279,14 @@ public:
   /// Iterators ///
   /////////////////
 
-  TensorIterator<T, SizeType> begin() const  // Need to stay lowercase for range basedloops
+  TensorIterator<T, SizeType, RANK> begin() const  // Need to stay lowercase for range basedloops
   {
-    return TensorIterator<T, SizeType>(shape_, strides_, padding_,
-                                       std::vector<SizeType>(shape_.size()), storage_, offset_);
+    return TensorIterator<T, SizeType, RANK>(shape_, strides_, padding_, 0, storage_, offset_);
   }
 
-  TensorIterator<T, SizeType> end() const  // Need to stay lowercase for range basedloops
+  TensorIterator<T, SizeType, RANK> end() const  // Need to stay lowercase for range basedloops
   {
-    std::vector<SizeType> endCoordinate(shape_.size());
-    endCoordinate[0] = shape_[0];
-    return TensorIterator<T, SizeType>(shape_, strides_, padding_, endCoordinate, storage_,
-                                       offset_);
+    return TensorIterator<T, SizeType, RANK>(shape_, strides_, padding_, shape_[0], storage_, offset_);
   }
 
   //////////////////////////
@@ -262,25 +296,28 @@ public:
   template <SizeType N, typename FirstIndex, typename... Indices>
   constexpr SizeType OffsetForIndices(FirstIndex &&index, Indices &&... indices) const
   {
-    return static_cast<SizeType>(index) * strides_[N] +
-      OffsetForIndices<N + 1>(std::forward<Indices>(indices)...);
+    static_assert(std::is_integral<typename std::remove_reference<FirstIndex>::type>::value, "Can't index tensor using non integer type");
+    return static_cast<SizeType>(index) * strides_[N] + OffsetForIndices<N + 1>(std::forward<Indices>(indices)...);
   }
   
   template <SizeType N, typename FirstIndex>
   constexpr SizeType OffsetForIndices(FirstIndex &&index) const
   {
+    static_assert(std::is_integral<typename std::remove_reference<FirstIndex>::type>::value, "Can't index tensor using non integer type");
     return static_cast<SizeType>(index) * strides_[N];
   }
 
   template <SizeType N, typename FirstIndex, typename... Indices>
   constexpr std::pair<SizeType, T> OffsetAndValueForIndices(FirstIndex &&index, Indices &&... indices) const
   {
+    static_assert(std::is_integral<typename std::remove_reference<FirstIndex>::type>::value, "Can't index tensor using non integer type");
     return std::pair<SizeType, T>(OffsetAndValueForIndices<N + 1>(std::forward<Indices>(indices)...).first + static_cast<SizeType>(index) * strides_[N], OffsetAndValueForIndices<N + 1>(std::forward<Indices>(indices)...).second);
   }
   
   template <SizeType N, typename FirstIndex>
   constexpr std::pair<SizeType, T> OffsetAndValueForIndices(FirstIndex &&index) const
   {
+    static_assert(std::is_integral<typename std::remove_reference<FirstIndex>::type>::value, "Can't index tensor using non integer type");
     return std::pair<SizeType, T>(0, index);
   }
 
@@ -293,7 +330,7 @@ public:
   {
     static_assert(sizeof...(Indices) == RANK, "Number of indexes in Get() doesn't match tensor rank");
     assert(sizeof...(Indices) == shape_.size());
-    return storage_.get()[OffsetForIndices<0>(indices...)];
+    return storage_.get()[offset_ + OffsetForIndices<0>(indices...)];
   }
 
   ///////////////
@@ -306,23 +343,22 @@ public:
     static_assert(sizeof...(Indices) == RANK + 1, "Number of indexes in Set() doesn't match tensor rank");
     assert(sizeof...(Indices) == shape_.size() + 1);
     std::pair<SizeType, T> ret = OffsetAndValueForIndices<0>(indicesAndValuesPack...);
-    storage_.get()[ret.first] = ret.second;
+    storage_.get()[offset_ + ret.first] = ret.second;
   }
   
   /*
    * return a slice of the tensor along the first dimension
    */
-  // Tensor<T> Slice(SizeType i) const
-  // {
-  //   assert(shape_.size() > 1 && i < shape_[0]);
-  //   Tensor<T> ret(std::vector<SizeType>(std::next(shape_.begin()), shape_.end()),     /* shape */
-  //                 std::vector<SizeType>(std::next(strides_.begin()), strides_.end()), /* stride */
-  //                 std::vector<SizeType>(std::next(padding_.begin()), padding_.end()), /* padding */
-  //                 storage_, offset_ + i * DimensionSize(0));
-  //   ret.strides_ = std::vector<SizeType>(std::next(strides_.begin()), strides_.end());
-  //   ret.padding_ = std::vector<SizeType>(std::next(padding_.begin()), padding_.end());
-  //   return ret;
-  // }
+  Tensor<T, RANK-1> Slice(SizeType i) const
+  {
+    assert(shape_.size() > 1 && i < shape_[0]);
+    Tensor<T, RANK-1> ret(std::vector<SizeType>(std::next(shape_.begin()), shape_.end()),     /* shape */
+			  std::vector<SizeType>(std::next(input_strides_.begin()), input_strides_.end()), /* stride */
+			  std::vector<SizeType>(std::next(padding_.begin()), padding_.end()), /* padding */
+			  storage_, offset_ + i * DimensionSize(0));
+    
+    return ret;
+  }
 
   /*
    * Add a dummy leading dimension
@@ -462,7 +498,7 @@ public:
 
   T Sum() const
   {
-    return std::accumulate(begin(), end(), T(0));
+    return 0;//std::accumulate(begin(), end(), T(0));
   }
 
   SelfType Transpose() const
@@ -478,30 +514,30 @@ public:
   }
 
 
-  std::string ToString() const
+
+  template<std::uint64_t N = RANK>
+  typename std::enable_if<(N == 1), std::string>::type ToString() const
   {
     std::stringstream ss;
     ss << std::setprecision(5) << std::fixed << std::showpos;
-    if (shape_.size() == 1)
-    {
-      for (SizeType i(0); i < shape_[0]; ++i)
+    for (SizeType i(0); i < shape_[0]; ++i)
       {
         ss << Get(i) << "\t";
       }
-    }
-    if (shape_.size() == 2)
-    {
-      for (SizeType i(0); i < shape_[0]; ++i)
-      {
-        for (SizeType j(0); j < shape_[1]; ++j)
-        {
-          ss << Get(i, j) << "\t";
-        }
-        ss << "\n";
-      }
-    }
     return ss.str();
   }
+
+  template<std::uint64_t N = RANK>
+  typename std::enable_if<(N > 1), std::string>::type ToString() const
+  {
+    std::stringstream ss;
+    for (SizeType i(0) ; i < shape_[0] ; ++i)
+      {
+	ss << Slice(i).ToString() << "\n";
+      }
+    return ss.str();
+  }
+
 
   //////////////////////
   /// equality check ///
@@ -529,10 +565,10 @@ public:
   // }
 
 private:
-  std::vector<SizeType>           shape_;
-  std::vector<SizeType>           padding_;
-  std::vector<SizeType>           strides_;
-  std::vector<SizeType>           input_strides_;
+  std::array<SizeType, RANK>      shape_;
+  std::array<SizeType, RANK>      padding_;
+  std::array<SizeType, RANK>      strides_;
+  std::array<SizeType, RANK>      input_strides_;
   std::shared_ptr<T>              storage_;
   SizeType                        offset_;
   SizeType                        size_;
