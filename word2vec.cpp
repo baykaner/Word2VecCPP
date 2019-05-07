@@ -15,6 +15,7 @@
 #include "unigram_table.hpp"
 
 #include "averaged_embeddings.hpp"
+#include "embeddings.hpp"
 
 using namespace fetch::ml;
 
@@ -29,13 +30,6 @@ typedef float real;                    // Precision of float numbers
 CBOWLoader<real> global_loader(5);
 UnigramTable unigram_table(0);
  
-struct vocab_word
-{
-  long long cn;
-  unsigned int unique_id;
-  char *word;
-};
-
 char train_file[MAX_STRING], output_file[MAX_STRING];
 
 int window = 5, min_count = 5, num_threads = 1, min_reduce = 1;
@@ -53,7 +47,8 @@ int hs = 0, negative = 5;
 const int table_size = 1e8;
 int *table;
 
-fetch::ml::ops::AveragedEmbeddings<fetch::math::Tensor<float, 2>> embeddings_module(1, 1);
+fetch::ml::ops::AveragedEmbeddings<fetch::math::Tensor<float, 2>> word_vectors_embeddings_module(1, 1);
+fetch::ml::ops::Embeddings<fetch::math::Tensor<float, 2>> word_weights_embeddings_module(1, 1);
 
 std::string readFile(std::string const &path)
 {
@@ -73,13 +68,12 @@ void InitUnigramTable()
 
 void InitNet()
 {
-  while (syn1neg.size() < global_loader.VocabSize())
-    syn1neg.emplace_back(fetch::math::Tensor<real, 1>({layer1_size}));
-
+  fetch::math::Tensor<real, 2> weight_embeding_matrix({global_loader.VocabSize(), layer1_size});
   fetch::math::Tensor<real, 2> word_embeding_matrix({global_loader.VocabSize(), layer1_size});
   for (auto &e : word_embeding_matrix)
     e = static_cast <float> (rand()) / static_cast <float> (RAND_MAX) / layer1_size;
-  embeddings_module.SetData(word_embeding_matrix);
+  word_vectors_embeddings_module.SetData(word_embeding_matrix);
+  word_weights_embeddings_module.SetData(weight_embeding_matrix);
 }
 
 /**
@@ -100,14 +94,24 @@ void *TrainModelThread(void *id)
   long long target, label;
   real f, g;
 
-  fetch::math::Tensor<real, 2> neu1_unsqueezed({1, layer1_size});
-  fetch::math::Tensor<real, 1> neu1 = neu1_unsqueezed.Slice(0);
-  fetch::math::Tensor<real, 2> neu1e_unsqueezed({1, layer1_size});
-  fetch::math::Tensor<real, 1> neu1e = neu1e_unsqueezed.Slice(0);
+  fetch::math::Tensor<real, 2> neu1_unsqueezed({1, layer1_size});  // context word average matrix 
+  fetch::math::Tensor<real, 1> neu1 = neu1_unsqueezed.Slice(0);    // context word average vector
+
+  fetch::math::Tensor<real, 2> neu1e_unsqueezed({1, layer1_size}); // error matrix
+  fetch::math::Tensor<real, 1> neu1e = neu1e_unsqueezed.Slice(0);  // error vector
+
+  fetch::math::Tensor<real, 2> label_weight_unsqueezed({1, layer1_size});       // label word weights matrix
+  fetch::math::Tensor<real, 1> label_weight = label_weight_unsqueezed.Slice(0); // label word weights vector
+  
 
   auto sample = thread_loader.GetNext();
   std::vector<std::reference_wrapper<fetch::math::Tensor<real, 2> const>> inputs;
   inputs.push_back(std::cref(sample.first));
+
+  fetch::math::Tensor<real, 2> label_tensor({1, 1});
+  std::vector<std::reference_wrapper<fetch::math::Tensor<real, 2> const>> label_input;
+  label_input.push_back(std::cref(label_tensor));
+
   
   unsigned int iterations = global_loader.Size() / num_threads;
   auto start = std::chrono::system_clock::now();
@@ -144,7 +148,7 @@ void *TrainModelThread(void *id)
       //      neu1.Fill(0);
       neu1e.Fill(0);
 
-      embeddings_module.Forward(inputs, neu1_unsqueezed);
+      word_vectors_embeddings_module.Forward(inputs, neu1_unsqueezed);
       		
       // NEGATIVE SAMPLING
       // Rather than performing backpropagation for every word in our 
@@ -170,29 +174,35 @@ void *TrainModelThread(void *id)
 		}
 	      
 	      f = 0;
+
+	      label_tensor.Set(0, 0, target);
+	      word_weights_embeddings_module.Forward(label_input, label_weight_unsqueezed);
+
+
 	      for (int fi(0) ; fi < layer1_size ; ++fi) // Dot Product
-		f += syn1neg[target].Get(fi) * neu1.Get(fi);
-	      
+		f += label_weight.Get(fi) * neu1.Get(fi);
+      
 	      if (f > MAX_EXP)
 		{
-		  g = (label - 1) * alpha;
+		  g = (label - 1); //  * alpha; // alpha multiplication has moved to the step call
 		}
 	      else if (f < -MAX_EXP)
 		{
-		  g = (label - 0) * alpha;
+		  g = (label - 0); //  * alpha; // alpha multiplication has moved to the step call
 		}
 	      else
 		{
-		  g = (label - expTable[(int)((f + MAX_EXP) * (EXP_TABLE_SIZE / MAX_EXP / 2))]) * alpha;
+		  g = (label - expTable[(int)((f + MAX_EXP) * (EXP_TABLE_SIZE / MAX_EXP / 2))]); // * alpha;  // alpha multiplication has moved to the step call
 		}				      
 	      
-	      neu1e.InlineAdd(syn1neg[target], g);
-	      syn1neg[target].InlineAdd(neu1, g);
+	      neu1e.InlineAdd(label_weight, g);
+	      word_weights_embeddings_module.Backward(label_input, neu1_unsqueezed);
+	      word_weights_embeddings_module.Step(g * alpha);
 	    }
 	}
       
-      embeddings_module.Backward(inputs, neu1e_unsqueezed);
-      embeddings_module.Step(alpha);
+      word_vectors_embeddings_module.Backward(inputs, neu1e_unsqueezed);
+      word_vectors_embeddings_module.Step(alpha);
     }
   pthread_exit(NULL);
 }
@@ -245,7 +255,7 @@ void TrainModel()
 	fprintf(fo, "%s ", kvp.first.c_str()); //	fprintf(fo, "%s ", vocab[a].word);
 
 	index.Set(0, 0, kvp.second.first);
-	embeddings_module.Forward(in_index, vector);
+	word_vectors_embeddings_module.Forward(in_index, vector);
 	for (b = 0; b < layer1_size; b++)
 	  {
 	    real v = vector.Get(0, b);
