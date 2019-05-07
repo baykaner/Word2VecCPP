@@ -26,7 +26,7 @@ using namespace fetch::ml;
 
 typedef float real;                    // Precision of float numbers
 
-CBOWLoader<uint64_t> global_loader(5);
+CBOWLoader<real> global_loader(5);
 UnigramTable unigram_table(0);
  
 struct vocab_word
@@ -39,7 +39,7 @@ struct vocab_word
 char train_file[MAX_STRING], output_file[MAX_STRING];
 char save_vocab_file[MAX_STRING], read_vocab_file[MAX_STRING];
 
-int binary = 0, cbow = 1, debug_mode = 2, window = 5, min_count = 5, num_threads = 12, min_reduce = 1;
+int binary = 0, cbow = 1, debug_mode = 2, window = 5, min_count = 5, num_threads = 1, min_reduce = 1;
 
 unsigned long long vocab_max_size = 1000, layer1_size = 200;
 unsigned long long train_words = 0, word_count_actual = 0, iter = 5, file_size = 0, classes = 0;
@@ -84,6 +84,11 @@ void InitNet()
   for (auto &w : syn0)
     for (auto &e : w)
       e = static_cast <float> (rand()) / static_cast <float> (RAND_MAX) / layer1_size;
+
+  fetch::math::Tensor<real, 2> word_embeding_matrix({global_loader.VocabSize(), layer1_size});
+  for (auto &e : word_embeding_matrix)
+    e = static_cast <float> (rand()) / static_cast <float> (RAND_MAX) / layer1_size;
+  embeddings_module.SetData(word_embeding_matrix);
 }
 
 /**
@@ -93,115 +98,110 @@ void InitNet()
 void *TrainModelThread(void *id)
 {
   // Make a copy of the global loader for thread
-  CBOWLoader<uint64_t> thread_loader(global_loader);
+  CBOWLoader<float> thread_loader(global_loader);
   thread_loader.SetOffset(thread_loader.Size() / (long long)num_threads * (long long)id);
   
   /*
    * word - Stores the index of a word in the vocab table.
    * word_count - Stores the total number of training words processed.
    */
-  long long a, d, cw, word, last_word;
+  long long d, word;
   long long target, label;
   real f, g;
 
-  fetch::math::Tensor<real, 1> neu1({layer1_size});
-  fetch::math::Tensor<real, 1> neu1e({layer1_size});
-  
+  fetch::math::Tensor<real, 2> neu1_unsqueezed({1, layer1_size});
+  fetch::math::Tensor<real, 1> neu1 = neu1_unsqueezed.Slice(0);
+  fetch::math::Tensor<real, 2> neu1e_unsqueezed({1, layer1_size});
+  fetch::math::Tensor<real, 1> neu1e = neu1e_unsqueezed.Slice(0);
+
   auto sample = thread_loader.GetNext();
+  std::vector<std::reference_wrapper<fetch::math::Tensor<real, 2> const>> inputs;
+  inputs.push_back(std::cref(sample.first));
+  
   unsigned int iterations = global_loader.Size() / num_threads;
+  auto start = std::chrono::system_clock::now();
+  unsigned int last_count(0);
   for (unsigned int i(0) ; i < iter * iterations ; ++i)
     {
-      if (id == 0 &&i % 10000 == 0)
+      if (id == 0 && i % 10000 == 0)
 	{
 	  alpha = starting_alpha * (((float)iter * iterations - i) / (iter * iterations));
 	  if (alpha < starting_alpha * 0.0001)
 	    alpha = starting_alpha * 0.0001;
-	  std::cout << i << " / " << iter * iterations << " (" << (int)(100.0 * i / (iter * iterations)) << ") -- " << alpha << std::endl;
+	  //	  std::cout << i << " / " << iter * iterations << " (" << (int)(100.0 * i / (iter * iterations)) << ") -- " << alpha << std::endl;
 	}
-    
+
+      auto end = std::chrono::system_clock::now();
+      std::chrono::duration<double> elapsed_seconds = end-start;    
+
+      if (elapsed_seconds.count() > 1)
+	{
+	  std::cout << "Word / sec " << i - last_count << std::endl;
+	  last_count = i;
+	  start = std::chrono::system_clock::now();
+	}
+      
+      
       if (thread_loader.IsDone())
 	{
 	  std::cout << id << " -- Reset" << std::endl;
 	  thread_loader.Reset();
 	}
-      thread_loader.GetNext(sample);      
+      thread_loader.GetNext(sample);
       word = sample.second.Get(0, 0);
     
-      neu1.Fill(0);
+      //      neu1.Fill(0);
       neu1e.Fill(0);
-      
-      if (cbow)
+
+      embeddings_module.Forward(inputs, neu1_unsqueezed);
+      		
+      // NEGATIVE SAMPLING
+      // Rather than performing backpropagation for every word in our 
+      // vocabulary, we only perform it for the positive sample and a few
+      // negative samples (the number of words is given by 'negative').
+      // These negative words are selected using a "unigram" distribution, 
+      // which is generated in the function InitUnigramTable.
+      if (negative > 0)
 	{
-	  cw = 0;
-	  for (a = 0 ; a < window * 2; a++)
+	  for (d = 0; d < negative + 1; d++)
 	    {
-	      last_word = sample.first.Get(0, a);
-	      if (last_word >= 0)
+	      // On the first iteration, we're going to train the positive sample.
+	      if (d == 0)
 		{
-		  neu1.InlineAdd(syn0[last_word]);
-		  cw++;
+		  target = word;
+		  label = 1;
 		}
-	    }
-      
-	  if (cw)
-	    {        
-	      // neu1 was the sum of the context word vectors, and now becomes
-	      // their average. 
-	      neu1.InlineDivide(cw);
-		
-	      // NEGATIVE SAMPLING
-	      // Rather than performing backpropagation for every word in our 
-	      // vocabulary, we only perform it for the positive sample and a few
-	      // negative samples (the number of words is given by 'negative').
-	      // These negative words are selected using a "unigram" distribution, 
-	      // which is generated in the function InitUnigramTable.
-	      if (negative > 0)
+	      else
 		{
-		  for (d = 0; d < negative + 1; d++)
-		    {
-		      // On the first iteration, we're going to train the positive sample.
-		      if (d == 0)
-			{
-			  target = word;
-			  label = 1;
-			}
-		      else
-			{
-			  target = unigram_table.Sample();
-			  if (target == word) continue;
-			  label = 0;
-			}
-
-		      f = 0;
-		      for (int fi(0) ; fi < layer1_size ; ++fi) // Dot Product
-			f += syn1neg[target].Get(fi) * neu1.Get(fi);
-		
-		      if (f > MAX_EXP)
-			{
-			  g = (label - 1) * alpha;
-			}
-		      else if (f < -MAX_EXP)
-			{
-			  g = (label - 0) * alpha;
-			}
-		      else
-			{
-			  g = (label - expTable[(int)((f + MAX_EXP) * (EXP_TABLE_SIZE / MAX_EXP / 2))]) * alpha;
-			}				      
-
-		      neu1e.InlineAdd(syn1neg[target], g);
-		      syn1neg[target].InlineAdd(neu1, g);
-		    }
+		  target = unigram_table.Sample();
+		  if (target == word) continue;
+		  label = 0;
 		}
 	      
-	      for (a = 0 ; a < window * 2 ; a++)
+	      f = 0;
+	      for (int fi(0) ; fi < layer1_size ; ++fi) // Dot Product
+		f += syn1neg[target].Get(fi) * neu1.Get(fi);
+	      
+	      if (f > MAX_EXP)
 		{
-		  last_word = sample.first.Get(0, a);
-		  if (last_word >= 0)
-		    syn0[last_word].InlineAdd(neu1e);
+		  g = (label - 1) * alpha;
 		}
+	      else if (f < -MAX_EXP)
+		{
+		  g = (label - 0) * alpha;
+		}
+	      else
+		{
+		  g = (label - expTable[(int)((f + MAX_EXP) * (EXP_TABLE_SIZE / MAX_EXP / 2))]) * alpha;
+		}				      
+	      
+	      neu1e.InlineAdd(syn1neg[target], g);
+	      syn1neg[target].InlineAdd(neu1, g);
 	    }
-	} 
+	}
+      
+      embeddings_module.Backward(inputs, neu1e_unsqueezed);
+      embeddings_module.Step(alpha);
     }
   pthread_exit(NULL);
 }
@@ -239,7 +239,10 @@ void TrainModel()
   // Run training, which occurs in the 'TrainModelThread' function.
   for (a = 0; a < num_threads; a++) pthread_create(&pt[a], NULL, TrainModelThread, (void *)a);
   for (a = 0; a < num_threads; a++) pthread_join(pt[a], NULL);
-  
+
+  fetch::math::Tensor<real, 2> index({1, 1});
+  std::vector<std::reference_wrapper<fetch::math::Tensor<real, 2> const>> in_index({std::cref(index)});
+  fetch::math::Tensor<real, 2> vector({1, layer1_size}); 
   
   fo = fopen(output_file, "wb");
   if (classes == 0) {
@@ -249,11 +252,15 @@ void TrainModel()
     for (auto kvp : vocab) // for (a = 0; a < vocab_size; a++)
       {
 	fprintf(fo, "%s ", kvp.first.c_str()); //	fprintf(fo, "%s ", vocab[a].word);
+
+	index.Set(0, 0, kvp.second.first);
+	embeddings_module.Forward(in_index, vector);
+
 	if (binary)
 	  {
 	    for (b = 0; b < layer1_size; b++)
 	      {
-		real v = syn0[kvp.second.first].Get(b);
+		real v = vector.Get(0, b); // syn0[kvp.second.first].Get(b);
 		fwrite(&v, sizeof(real), 1, fo);
 	      }
 	  }
