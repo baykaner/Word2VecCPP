@@ -52,7 +52,7 @@ public:
 
     uint64_t valid_samples(0);
     // Taking a slice of the output, this as the effect of turning a [1xDIM] matrix into a [DIM] vector (could have used squeeze)
-    // This is done for performance reasons as iterating over a vecot is much faster than iterating over a matrix
+    // This is done for performance reasons as iterating over a vector is much faster than iterating over a matrix
     fetch::math::Tensor<float, 1> output_slice = output.Slice(0);
     bool clear = true;
     for (DataType const &i : inputs.front().get())
@@ -83,7 +83,7 @@ public:
     assert(inputs.front().get().shape().size() == 2);
 
     // Taking a slice of the output, this as the effect of turning a [1xDIM] matrix into a [DIM] vector (could have used Squeeze)
-    // This is done for performance reasons as iterating over a vecot is much faster than iterating over a matrix
+    // This is done for performance reasons as iterating over a vector is much faster than iterating over a matrix
     fetch::math::Tensor<float, 1> error_signal_slice = error_signal.Slice(0);
     
     for (DataType const &i : inputs.front().get())
