@@ -37,16 +37,14 @@ struct vocab_word
 };
 
 char train_file[MAX_STRING], output_file[MAX_STRING];
-char save_vocab_file[MAX_STRING], read_vocab_file[MAX_STRING];
 
-int binary = 0, cbow = 1, debug_mode = 2, window = 5, min_count = 5, num_threads = 1, min_reduce = 1;
+int window = 5, min_count = 5, num_threads = 1, min_reduce = 1;
 
 unsigned long long vocab_max_size = 1000, layer1_size = 200;
 unsigned long long train_words = 0, word_count_actual = 0, iter = 5, file_size = 0, classes = 0;
 
 real alpha = 0.025, starting_alpha, sample = 1e-3;
 
-std::vector<fetch::math::Tensor<real, 1>> syn0; // word vector
 std::vector<fetch::math::Tensor<real, 1>> syn1neg; // Weights
 real *expTable;
 clock_t start;
@@ -75,15 +73,8 @@ void InitUnigramTable()
 
 void InitNet()
 {
-  while (syn0.size() < global_loader.VocabSize())
-    syn0.emplace_back(fetch::math::Tensor<real, 1>({layer1_size}));
-
   while (syn1neg.size() < global_loader.VocabSize())
     syn1neg.emplace_back(fetch::math::Tensor<real, 1>({layer1_size}));
-
-  for (auto &w : syn0)
-    for (auto &e : w)
-      e = static_cast <float> (rand()) / static_cast <float> (RAND_MAX) / layer1_size;
 
   fetch::math::Tensor<real, 2> word_embeding_matrix({global_loader.VocabSize(), layer1_size});
   for (auto &e : word_embeding_matrix)
@@ -255,21 +246,10 @@ void TrainModel()
 
 	index.Set(0, 0, kvp.second.first);
 	embeddings_module.Forward(in_index, vector);
-
-	if (binary)
+	for (b = 0; b < layer1_size; b++)
 	  {
-	    for (b = 0; b < layer1_size; b++)
-	      {
-		real v = vector.Get(0, b); // syn0[kvp.second.first].Get(b);
-		fwrite(&v, sizeof(real), 1, fo);
-	      }
-	  }
-	else
-	  {
-	    for (b = 0; b < layer1_size; b++)
-	      {
-		fprintf(fo, "%lf ", syn0[kvp.second.first].Get(b));
-	      }
+	    real v = vector.Get(0, b);
+	    fwrite(&v, sizeof(real), 1, fo);
 	  }
 	fprintf(fo, "\n");
       }
@@ -300,17 +280,8 @@ int main(int argc, char **argv) {
     return 0;
   
   output_file[0] = 0;
-  save_vocab_file[0] = 0;
-  read_vocab_file[0] = 0;
   if ((i = ArgPos((char *)"-size", argc, argv)) > 0) layer1_size = atoi(argv[i + 1]);
   if ((i = ArgPos((char *)"-train", argc, argv)) > 0) strcpy(train_file, argv[i + 1]);
-  if ((i = ArgPos((char *)"-save-vocab", argc, argv)) > 0) strcpy(save_vocab_file, argv[i + 1]);
-  if ((i = ArgPos((char *)"-read-vocab", argc, argv)) > 0) strcpy(read_vocab_file, argv[i + 1]);
-  if ((i = ArgPos((char *)"-debug", argc, argv)) > 0) debug_mode = atoi(argv[i + 1]);
-  if ((i = ArgPos((char *)"-binary", argc, argv)) > 0) binary = atoi(argv[i + 1]);
-  if ((i = ArgPos((char *)"-cbow", argc, argv)) > 0) cbow = atoi(argv[i + 1]);
-  if (cbow) alpha = 0.05;
-  if ((i = ArgPos((char *)"-alpha", argc, argv)) > 0) alpha = atof(argv[i + 1]);
   if ((i = ArgPos((char *)"-output", argc, argv)) > 0) strcpy(output_file, argv[i + 1]);
   if ((i = ArgPos((char *)"-window", argc, argv)) > 0) window = atoi(argv[i + 1]);
   if ((i = ArgPos((char *)"-sample", argc, argv)) > 0) sample = atof(argv[i + 1]);
@@ -321,9 +292,10 @@ int main(int argc, char **argv) {
   if ((i = ArgPos((char *)"-min-count", argc, argv)) > 0) min_count = atoi(argv[i + 1]);
   if ((i = ArgPos((char *)"-classes", argc, argv)) > 0) classes = atoi(argv[i + 1]);
 
-
+  alpha = 0.05; // Initial learning rate
+  
   global_loader.AddData(readFile(train_file));
-  global_loader.RemoveInfrequent(5);
+  global_loader.RemoveInfrequent(min_count);
   std::cout << "Dataloader Vocab Size : " << global_loader.VocabSize() << std::endl;
   
   expTable = (real *)malloc((EXP_TABLE_SIZE + 1) * sizeof(real));
