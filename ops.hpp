@@ -110,14 +110,14 @@ public:
   virtual ArrayType ForwardBatch(std::vector<std::reference_wrapper<const ArrayType>> const &inputs)
   {
     assert(inputs.size() == 1);
-    std::vector<ArrayType> results;
-    for (typename ArrayType::SizeType b(0); b < inputs.front().get().shape()[0]; ++b)
-    {
-      ArrayType slice = inputs.front().get().Slice(b).Copy();
-      ArrayType output({1});  // Temporary Dummy
-      results.push_back(this->Forward({slice}, output));
-    }
-    return ArrayType::Stack(results);
+    // std::vector<ArrayType> results;
+    // for (typename ArrayType::SizeType b(0); b < inputs.front().get().shape()[0]; ++b)
+    // {
+    //   ArrayType slice = inputs.front().get().Slice(b).Copy();
+    //   ArrayType output({1});  // Temporary Dummy
+    //   results.push_back(this->Forward({slice}, output));
+    // }
+    return inputs.front().get(); // ArrayType::Stack(results);
   }
 
   virtual std::vector<ArrayType> BackwardBatch(
@@ -125,24 +125,24 @@ public:
       ArrayType const &                                           errorSignal)
   {
     return this->Backward(inputs, errorSignal);
-    assert(inputs.size() == 1);
-    assert(inputs.front().get().shape()[0] == errorSignal.shape()[0]);
-    std::vector<std::vector<ArrayType>> results;
-    for (typename ArrayType::SizeType b(0); b < inputs.front().get().shape()[0]; ++b)
-    {
-      auto ret =
-          this->Backward({inputs.front().get().Slice(b).Tensor()}, errorSignal.Slice(b).Tensor());
-      for (std::size_t i(0); i < ret.size(); ++i)
-      {
-        results[i].push_back(ret[i]);
-      }
-    }
-    std::vector<ArrayType> concatenatedResults;
-    for (auto const &tensorList : results)
-    {
-      concatenatedResults.push_back(ArrayType::Stack(tensorList));
-    }
-    return concatenatedResults;
+    // assert(inputs.size() == 1);
+    // assert(inputs.front().get().shape()[0] == errorSignal.shape()[0]);
+    // std::vector<std::vector<ArrayType>> results;
+    // for (typename ArrayType::SizeType b(0); b < inputs.front().get().shape()[0]; ++b)
+    // {
+    //   auto ret =
+    //       this->Backward({inputs.front().get().Slice(b).Tensor()}, errorSignal.Slice(b).Tensor());
+    //   for (std::size_t i(0); i < ret.size(); ++i)
+    //   {
+    //     results[i].push_back(ret[i]);
+    //   }
+    // }
+    // std::vector<ArrayType> concatenatedResults;
+    // for (auto const &tensorList : results)
+    // {
+    //   concatenatedResults.push_back(ArrayType::Stack(tensorList));
+    // }
+    // return concatenatedResults;
   }
 };
 

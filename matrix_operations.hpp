@@ -28,10 +28,10 @@ namespace math {
       {
 	for (typename ArrayType::SizeType j(0); j < B.shape()[1]; ++j)
 	  {
-	    ret.Get(i, j) = A.Get(i, 0) * B.Get(0, j);
+	    ret.Set(i, j, A.Get(i, 0) * B.Get(0, j));
 	    for (typename ArrayType::SizeType k(1); k < A.shape()[1]; ++k)
 	      {
-		ret.Get(i, j) += A.Get(i, k) * B.Get(k, j);
+		ret.Set(i, j, ret.Get(i, j) + A.Get(i, k) * B.Get(k, j));
 	      }
 	  }
       }
@@ -46,7 +46,7 @@ namespace math {
 	  {
 	    for (size_t k(0); k < A.shape()[1]; ++k)
 	      {
-		ret.Get(i, j) += A.Get(i, k) * B.Get(j, k);
+		ret.Set(i, j, ret.Get(i, j) + A.Get(i, k) * B.Get(j, k));
 	      }
 	  }
       }
@@ -61,7 +61,7 @@ namespace math {
 	  {
 	    for (size_t k(0); k < A.shape()[0]; ++k)
 	      {
-		ret.Get(i, j) += A.Get(k, i) * B.Get(k, j);
+		ret.Set(i, j, ret.Get(i, j) + A.Get(k, i) * B.Get(k, j));
 	      }
 	  }
       }

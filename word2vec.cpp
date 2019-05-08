@@ -50,6 +50,7 @@ int *table;
 
 fetch::ml::ops::AveragedEmbeddings<fetch::math::Tensor<float, 2>> word_vectors_embeddings_module(1, 1);
 fetch::ml::ops::Embeddings<fetch::math::Tensor<float, 2>> word_weights_embeddings_module(1, 1);
+fetch::ml::ops::MatrixMultiply<fetch::math::Tensor<float, 2>> dot_module;
 
 std::string readFile(std::string const &path)
 {
@@ -95,7 +96,8 @@ void *TrainModelThread(void *id)
   long long target, label;
   real f, g;
 
-  fetch::math::Tensor<real, 2> neu1_unsqueezed({1, layer1_size});  // context word average matrix 
+  fetch::math::Tensor<real, 2> neu1_unsqueezed({1, layer1_size});  // context word average matrix
+  fetch::math::Tensor<real, 2> neu1_transposed = neu1_unsqueezed.Transpose();  // context word average matrix
   fetch::math::Tensor<real, 1> neu1 = neu1_unsqueezed.Slice(0);    // context word average vector
 
   fetch::math::Tensor<real, 2> neu1e_unsqueezed({1, layer1_size}); // error matrix
@@ -103,7 +105,9 @@ void *TrainModelThread(void *id)
 
   fetch::math::Tensor<real, 2> label_weight_unsqueezed({1, layer1_size});       // label word weights matrix
   fetch::math::Tensor<real, 1> label_weight = label_weight_unsqueezed.Slice(0); // label word weights vector
-  
+
+  fetch::math::Tensor<real, 2> f_tensor({1, 1});
+  fetch::math::Tensor<real, 2> g_tensor({1, 1});
 
   auto sample = thread_loader.GetNext();
   std::vector<std::reference_wrapper<fetch::math::Tensor<real, 2> const>> inputs;
@@ -113,9 +117,12 @@ void *TrainModelThread(void *id)
   std::vector<std::reference_wrapper<fetch::math::Tensor<real, 2> const>> label_input;
   label_input.push_back(std::cref(label_tensor));
 
+  std::vector<std::reference_wrapper<fetch::math::Tensor<real, 2> const>> dot_input;
+  dot_input.push_back(std::cref(label_weight_unsqueezed));
+  dot_input.push_back(std::cref(neu1_transposed));
   
   unsigned int iterations = global_loader.Size() / num_threads;
-  auto start = std::chrono::system_clock::now();
+  //  auto start = std::chrono::system_clock::now();
   unsigned int last_count(0);
   for (unsigned int i(0) ; i < iter * iterations ; ++i)
     {
@@ -124,18 +131,18 @@ void *TrainModelThread(void *id)
 	  alpha = starting_alpha * (((float)iter * iterations - i) / (iter * iterations));
 	  if (alpha < starting_alpha * 0.0001)
 	    alpha = starting_alpha * 0.0001;
-	  //	  std::cout << i << " / " << iter * iterations << " (" << (int)(100.0 * i / (iter * iterations)) << ") -- " << alpha << std::endl;
+	  std::cout << i << " / " << iter * iterations << " (" << (int)(100.0 * i / (iter * iterations)) << ") -- " << alpha << std::endl;
 	}
 
-      auto end = std::chrono::system_clock::now();
-      std::chrono::duration<double> elapsed_seconds = end-start;    
+      // auto end = std::chrono::system_clock::now();
+      // std::chrono::duration<double> elapsed_seconds = end-start;    
 
-      if (elapsed_seconds.count() > 1)
-	{
-	  std::cout << "Word / sec " << i - last_count << std::endl;
-	  last_count = i;
-	  start = std::chrono::system_clock::now();
-	}
+      // if (elapsed_seconds.count() > 1)
+      // 	{
+      // 	  std::cout << "Word / sec " << i - last_count << std::endl;
+      // 	  last_count = i;
+      // 	  start = std::chrono::system_clock::now();
+      // 	}
       
       
       if (thread_loader.IsDone())
@@ -180,9 +187,15 @@ void *TrainModelThread(void *id)
 	      word_weights_embeddings_module.Forward(label_input, label_weight_unsqueezed);
 
 
+	      dot_module.Forward(dot_input, f_tensor);	      
 	      for (int fi(0) ; fi < layer1_size ; ++fi) // Dot Product
 		f += label_weight.Get(fi) * neu1.Get(fi);
-      
+
+	      if (f != f_tensor.Get(0, 0))
+		{
+		  std::cerr << f << " != " << f_tensor.Get(0, 0) << std::endl;
+		}
+	      
 	      if (f > MAX_EXP)
 		{
 		  g = (label - 1); //  * alpha; // alpha multiplication has moved to the step call
@@ -195,6 +208,12 @@ void *TrainModelThread(void *id)
 		{
 		  g = (label - expTable[(int)((f + MAX_EXP) * (EXP_TABLE_SIZE / MAX_EXP / 2))]); // * alpha;  // alpha multiplication has moved to the step call
 		}				      
+
+
+	      g_tensor.Set(0, 0, g);
+	      auto error_signals = dot_module.Backward(dot_input, g_tensor);	      
+
+	      
 	      
 	      neu1e.InlineAdd(label_weight, g);
 	      word_weights_embeddings_module.Backward(label_input, neu1_unsqueezed);

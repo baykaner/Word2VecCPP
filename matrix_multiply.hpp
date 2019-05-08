@@ -30,8 +30,6 @@ class MatrixMultiply : public fetch::ml::BatchOps<T, 2>
 public:
   using ArrayType      = T;
   using SizeType       = typename ArrayType::SizeType;
-  using ArrayPtrType   = std::shared_ptr<ArrayType>;
-  using ConstSliceType = typename ArrayType::ConstSliceType;
 
   MatrixMultiply()  = default;
   ~MatrixMultiply() = default;
@@ -40,10 +38,10 @@ public:
                     ArrayType &                                                 output)
   {
     (void)output;
-    ASSERT(inputs.size() == 2);
-    ASSERT(inputs.at(0).get().shape().size() == 2);
-    ASSERT(inputs.at(1).get().shape().size() == 2);
-    ASSERT(output.shape() == ComputeOutputShape(inputs));
+    assert(inputs.size() == 2);
+    assert(inputs.at(0).get().shape().size() == 2);
+    assert(inputs.at(1).get().shape().size() == 2);
+    assert(output.shape() == ComputeOutputShape(inputs));
 
     fetch::math::Dot(inputs[0].get(), inputs[1].get(), output);
     return output;
@@ -53,7 +51,7 @@ public:
       std::vector<std::reference_wrapper<const ArrayType>> const &inputs,
       ArrayType const &                                           errorSignal)
   {
-    ASSERT(inputs.size() == 2);
+    assert(inputs.size() == 2);
 
     ArrayType errorSignal1(inputs.at(0).get().shape());
     ArrayType errorSignal2(inputs.at(1).get().shape());
@@ -64,8 +62,8 @@ public:
     return {errorSignal1, errorSignal2};
   }
 
-  std::vector<SizeType> ComputeOutputShape(
-      std::vector<std::reference_wrapper<ArrayType const>> const &inputs)
+  std::array<SizeType, 2> ComputeOutputShape(
+      std::vector<std::reference_wrapper<ArrayType const>> const &inputs) const
   {
     return {inputs.at(0).get().shape()[0], inputs.at(1).get().shape()[1]};
   }
