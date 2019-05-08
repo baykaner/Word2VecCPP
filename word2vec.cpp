@@ -18,6 +18,8 @@
 #include "embeddings.hpp"
 #include "matrix_multiply.hpp"
 
+#include "graph.hpp"
+
 using namespace fetch::ml;
 
 #define MAX_STRING 100

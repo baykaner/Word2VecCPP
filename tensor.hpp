@@ -224,7 +224,7 @@ public:
 
   SizeType Capacity() const
   {
-    return std::max(1ul, DimensionSize(0) * shape_[0] + padding_[0]);
+    return std::max(SizeType(1), DimensionSize(0) * shape_[0] + padding_[0]);
   }
 
   // TODO(private, 520): fix capitalisation (kepping it consistent with NDArray for now)
