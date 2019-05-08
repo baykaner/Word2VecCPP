@@ -17,10 +17,13 @@
 #include "averaged_embeddings.hpp"
 #include "embeddings.hpp"
 #include "matrix_multiply.hpp"
+#include "inplace_transpose.hpp"
+#include "placeholder.hpp"
 
 #include "graph.hpp"
 
 using namespace fetch::ml;
+using namespace fetch::ml::ops;
 
 #define MAX_STRING 100
 #define EXP_TABLE_SIZE 1000
@@ -50,6 +53,7 @@ int hs = 0, negative = 5;
 const int table_size = 1e8;
 int *table;
 
+fetch::ml::Graph<fetch::math::Tensor<real, 2>> graph;
 fetch::ml::ops::AveragedEmbeddings<fetch::math::Tensor<float, 2>> word_vectors_embeddings_module(1, 1);
 fetch::ml::ops::Embeddings<fetch::math::Tensor<float, 2>> word_weights_embeddings_module(1, 1);
 fetch::ml::ops::MatrixMultiply<fetch::math::Tensor<float, 2>> dot_module;
@@ -78,6 +82,16 @@ void InitNet()
     e = static_cast <float> (rand()) / static_cast <float> (RAND_MAX) / layer1_size;
   word_vectors_embeddings_module.SetData(word_embeding_matrix);
   word_weights_embeddings_module.SetData(weight_embeding_matrix);
+
+
+  graph.AddNode<PlaceHolder<fetch::math::Tensor<real, 2>, 2>>("Context", {});
+  graph.AddNode<AveragedEmbeddings<fetch::math::Tensor<real, 2>>>("Words", {"Context"}, word_embeding_matrix); //global_loader.VocabSize(), layer1_size);
+  graph.AddNode<PlaceHolder<fetch::math::Tensor<real, 2>, 2>>("Target", {});
+  graph.AddNode<Embeddings<fetch::math::Tensor<real, 2>>>("Weights", {"Target"}, weight_embeding_matrix); // global_loader.VocabSize(), layer1_size);
+  graph.AddNode<InplaceTranspose<fetch::math::Tensor<real, 2>>>("WeightsTranspose", {"Weights"});  
+  graph.AddNode<MatrixMultiply<fetch::math::Tensor<real, 2>>>("DotProduct", {"Words", "WeightsTranspose"});
+
+  
 }
 
 /**
@@ -158,6 +172,7 @@ void *TrainModelThread(void *id)
       //      neu1.Fill(0);
       neu1e.Fill(0);
 
+      graph.SetInput("Context", sample.first);
       word_vectors_embeddings_module.Forward(inputs, neu1_unsqueezed);
       		
       // NEGATIVE SAMPLING
@@ -186,6 +201,7 @@ void *TrainModelThread(void *id)
 	      f = 0;
 
 	      label_tensor.Set(0, 0, target);
+	      graph.SetInput("Target", label_tensor);
 	      word_weights_embeddings_module.Forward(label_input, label_weight_unsqueezed);
 
 
@@ -198,6 +214,15 @@ void *TrainModelThread(void *id)
 		  std::cerr << f << " != " << f_tensor.Get(0, 0) << std::endl;
 		}
 
+	      auto graphF = graph.Evaluate("DotProduct");
+
+	      if (f != graphF.Get(0, 0))
+		{
+		  std::cerr << f << " != " << graphF.Get(0, 0) << std::endl;
+		}
+
+	      
+	      
 	      f = f_tensor.Get(0, 0);
 	      
 	      if (f > MAX_EXP)

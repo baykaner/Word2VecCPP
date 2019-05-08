@@ -34,8 +34,6 @@ class NodeInterface
 public:
   using ArrayType      = T;
   using ArrayPtrType   = std::shared_ptr<ArrayType>;
-  using SliceType      = typename ArrayType::SliceType;
-  using ConstSliceType = typename ArrayType::ConstSliceType;
 
   virtual ArrayType &Evaluate()                                            = 0;
   virtual void       AddInput(std::shared_ptr<NodeInterface<T>> const &i)  = 0;
@@ -61,14 +59,13 @@ private:
 public:
   using ArrayType      = T;
   using ArrayPtrType   = std::shared_ptr<ArrayType>;
-  using SliceType      = typename ArrayType::SliceType;
-  using ConstSliceType = typename ArrayType::ConstSliceType;
 
   template <typename... Params>
   Node(std::string const name, Params... params)
     : O(params...)
     , name_(std::move(name))
     , cached_output_status_(CachedOutputState::CHANGED_SIZE)
+    , cached_output_({1, 1})
     , batch_(false)
   {}
 
@@ -86,7 +83,7 @@ public:
 
   virtual ArrayType &Evaluate()
   {
-    FETCH_LOG_INFO("ML_LIB", "Evaluating node [", name_, "]");
+    //    FETCH_LOG_INFO("ML_LIB", "Evaluating node [", name_, "]");
     if (cached_output_status_ != CachedOutputState::VALID_CACHE)
     {
       std::vector<std::reference_wrapper<const ArrayType>> inputs = GatherInputs();
@@ -95,7 +92,7 @@ public:
         auto output_shape = this->ComputeOutputShape(inputs);
         if (cached_output_.shape() != output_shape)
         {
-          cached_output_.ResizeFromShape(output_shape);
+          cached_output_ = ArrayType(output_shape);
         }
       }
       if (batch_)
@@ -115,7 +112,7 @@ public:
   virtual std::vector<std::pair<NodeInterface<T> *, ArrayType>> BackPropagate(
       ArrayType const &errorSignal)
   {
-    FETCH_LOG_INFO("ML_LIB", "Backpropagating node [", name_, "]");
+    //    FETCH_LOG_INFO("ML_LIB", "Backpropagating node [", name_, "]");
     std::vector<std::reference_wrapper<const ArrayType>> inputs = GatherInputs();
     std::vector<ArrayType> back_propagated_error_signals = this->Backward(inputs, errorSignal);
     std::vector<std::pair<NodeInterface<T> *, ArrayType>> non_back_propagated_error_signals;

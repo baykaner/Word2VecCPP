@@ -41,7 +41,6 @@ public:
   using ArrayType      = T;
   using ArrayPtrType   = std::shared_ptr<ArrayType>;
   using Datatype       = typename ArrayType::Type;
-  using ConstSliceType = typename ArrayType::ConstSliceType;
 
   Graph()
   {}
@@ -131,7 +130,7 @@ public:
    * @param data the pointer to a tensor to assign to the placeholder
    * @param batch flag to indicate if input should be treated as batch
    */
-  void SetInput(std::string const &node_name, ArrayType data, bool batch = false)
+  void SetInput(std::string const &node_name, ArrayType const &data, bool batch = false)
   {
     std::shared_ptr<fetch::ml::ops::PlaceHolder<ArrayType, 2>> placeholder =
       std::dynamic_pointer_cast<fetch::ml::ops::PlaceHolder<ArrayType, 2>>(nodes_[node_name]);

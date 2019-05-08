@@ -40,6 +40,11 @@ public:
     this->SetData(weights);
   }
 
+  AveragedEmbeddings(ArrayType &weights)
+  {
+    this->SetData(weights);
+  }
+
   virtual ~AveragedEmbeddings() = default;
 
   virtual ArrayType Forward(std::vector<std::reference_wrapper<ArrayType const>> const &inputs,

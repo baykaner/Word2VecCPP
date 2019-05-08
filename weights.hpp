@@ -18,8 +18,7 @@
 //------------------------------------------------------------------------------
 
 #include "placeholder.hpp"
-//#include "state_dict.hpp"
-
+#include "state_dict.hpp"
 #include <random>
 
 namespace fetch {
@@ -49,8 +48,8 @@ public:
   using ArrayPtrType = std::shared_ptr<ArrayType>;
 
   virtual void                           Step(typename T::Type learningRate) = 0;
-  // virtual struct fetch::ml::StateDict<T> StateDict() const                   = 0;
-  // virtual void LoadStateDict(struct fetch::ml::StateDict<T> const &dict)     = 0;
+  virtual struct fetch::ml::StateDict<T> StateDict() const                   = 0;
+  virtual void LoadStateDict(struct fetch::ml::StateDict<T> const &dict)     = 0;
 };
 
 template <class T, std::uint64_t OUTPUT_RANK>
@@ -100,23 +99,23 @@ public:
    * constructs a state dictionary used for exporting/saving weights
    * @return
    */
-  // virtual struct fetch::ml::StateDict<T> StateDict() const
-  // {
-  //   struct fetch::ml::StateDict<T> d;
-  //   d.weights_ = this->output_;
-  //   return d;
-  // }
+  virtual struct fetch::ml::StateDict<T> StateDict() const
+  {
+    struct fetch::ml::StateDict<T> d;
+    d.weights_ = this->output_;
+    return d;
+  }
 
-  // /**
-  //  * load from a state dictionary to import weights
-  //  * @param dict
-  //  */
-  // virtual void
-  // LoadStateDict(struct fetch::ml::StateDict<T> const &dict)
-  // {
-  //   assert(dict.dict_.empty());
-  //   SetData(*dict.weights_);
-  // }
+  /**
+   * load from a state dictionary to import weights
+   * @param dict
+   */
+  virtual void
+  LoadStateDict(struct fetch::ml::StateDict<T> const &dict)
+  {
+    assert(dict.dict_.empty());
+    SetData(*dict.weights_);
+  }
 
   /**
    * interface to call standard weights initialisation routines. defaults to xavier
