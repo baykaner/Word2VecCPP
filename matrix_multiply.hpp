@@ -56,6 +56,9 @@ public:
     ArrayType errorSignal1(inputs.at(0).get().shape());
     ArrayType errorSignal2(inputs.at(1).get().shape());
 
+    errorSignal1.Fill(0);
+    errorSignal2.Fill(0);
+    
     fetch::math::DotTranspose(errorSignal, inputs.at(1).get(), errorSignal1);
     fetch::math::TransposeDot(inputs.at(0).get(), errorSignal, errorSignal2);
 

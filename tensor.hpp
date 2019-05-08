@@ -224,7 +224,7 @@ public:
 
   SizeType Capacity() const
   {
-    return std::max(SizeType(1), DimensionSize(0) * shape_[0] + padding_[0]);
+    return std::max(1ul, DimensionSize(0) * shape_[0] + padding_[0]);
   }
 
   // TODO(private, 520): fix capitalisation (kepping it consistent with NDArray for now)
@@ -363,7 +363,9 @@ public:
     
     Tensor<T, RANK-1> ret(slice_shape, slice_strides, slice_padding,
 			  storage_, offset_ + i * DimensionSize(0));
-    
+
+    std::copy(std::next(strides_.begin()), strides_.end(), ret.strides_.begin());
+    std::copy(std::next(padding_.begin()), padding_.end(), ret.padding_.begin());
     return ret;
   }
 
@@ -513,8 +515,8 @@ public:
   {
     assert(shape_.size() == 2);
     SelfType ret({shape_[1], shape_[0]}, /* shape */
-		 {},                       /* stride */
-		 {},                       /* padding */
+		 {SizeType(-1), SizeType(-1)},                       /* stride */
+		 {SizeType(-1), SizeType(-1)},                       /* padding */
 		 storage_, offset_);
     std::copy(strides_.rbegin(), strides_.rend(), ret.strides_.begin());
     std::copy(padding_.rbegin(), padding_.rend(), ret.padding_.begin());

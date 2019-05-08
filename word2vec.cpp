@@ -195,6 +195,8 @@ void *TrainModelThread(void *id)
 		{
 		  std::cerr << f << " != " << f_tensor.Get(0, 0) << std::endl;
 		}
+
+	      f = f_tensor.Get(0, 0);
 	      
 	      if (f > MAX_EXP)
 		{
@@ -210,14 +212,13 @@ void *TrainModelThread(void *id)
 		}				      
 
 
+
 	      g_tensor.Set(0, 0, g);
 	      auto error_signals = dot_module.Backward(dot_input, g_tensor);	      
 
-	      
-	      
-	      neu1e.InlineAdd(label_weight, g);
-	      word_weights_embeddings_module.Backward(label_input, neu1_unsqueezed);
-	      word_weights_embeddings_module.Step(g * alpha);
+	      neu1e.InlineAdd(error_signals[1].Transpose().Slice(0));
+	      word_weights_embeddings_module.Backward(label_input, error_signals[0]);
+	      word_weights_embeddings_module.Step(alpha);
 	    }
 	}
       
