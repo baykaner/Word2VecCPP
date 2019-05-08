@@ -39,6 +39,17 @@ public:
   {
     return data_[rng_() % data_.size()];
   }
+
+  uint64_t SampleNegative(uint64_t positiveIndex)
+  {
+    uint64_t sample = data_[rng_() % data_.size()];
+    while (sample == positiveIndex)
+      {
+	sample = data_[rng_() % data_.size()];
+      }
+    return sample;
+  }
+
   
 private:
   std::vector<uint64_t> data_;

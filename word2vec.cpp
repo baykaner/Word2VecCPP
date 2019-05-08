@@ -16,6 +16,7 @@
 
 #include "averaged_embeddings.hpp"
 #include "embeddings.hpp"
+#include "matrix_multiply.hpp"
 
 using namespace fetch::ml;
 
@@ -168,7 +169,7 @@ void *TrainModelThread(void *id)
 		}
 	      else
 		{
-		  target = unigram_table.Sample();
+		  target = unigram_table.SampleNegative(target);
 		  if (target == word) continue;
 		  label = 0;
 		}
