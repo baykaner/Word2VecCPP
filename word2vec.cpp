@@ -170,10 +170,10 @@ void *TrainModelThread(void *id)
       word = sample.second.Get(0, 0);
     
       //      neu1.Fill(0);
-      neu1e.Fill(0);
+      //      neu1e.Fill(0);
 
       graph.SetInput("Context", sample.first);
-      word_vectors_embeddings_module.Forward(inputs, neu1_unsqueezed);
+      // word_vectors_embeddings_module.Forward(inputs, neu1_unsqueezed);
       		
       // NEGATIVE SAMPLING
       // Rather than performing backpropagation for every word in our 
@@ -202,28 +202,28 @@ void *TrainModelThread(void *id)
 
 	      label_tensor.Set(0, 0, target);
 	      graph.SetInput("Target", label_tensor);
-	      word_weights_embeddings_module.Forward(label_input, label_weight_unsqueezed);
+	      // word_weights_embeddings_module.Forward(label_input, label_weight_unsqueezed);
 
 
-	      dot_module.Forward(dot_input, f_tensor);	      
-	      for (int fi(0) ; fi < layer1_size ; ++fi) // Dot Product
-		f += label_weight.Get(fi) * neu1.Get(fi);
+	      // dot_module.Forward(dot_input, f_tensor);	      
+	      // for (int fi(0) ; fi < layer1_size ; ++fi) // Dot Product
+	      // 	f += label_weight.Get(fi) * neu1.Get(fi);
 
-	      if (f != f_tensor.Get(0, 0))
-		{
-		  std::cerr << f << " != " << f_tensor.Get(0, 0) << std::endl;
-		}
+	      // if (f != f_tensor.Get(0, 0))
+	      // 	{
+	      // 	  std::cerr << f << " != " << f_tensor.Get(0, 0) << std::endl;
+	      // 	}
 
 	      auto graphF = graph.Evaluate("DotProduct");
 
-	      if (f != graphF.Get(0, 0))
-		{
-		  std::cerr << f << " != " << graphF.Get(0, 0) << std::endl;
-		}
+	      // if (f != graphF.Get(0, 0))
+	      // 	{
+	      // 	  std::cerr << f << " != " << graphF.Get(0, 0) << std::endl;
+	      // 	}
 
 	      
 	      
-	      f = f_tensor.Get(0, 0);
+	      f = graphF.Get(0, 0);
 	      
 	      if (f > MAX_EXP)
 		{
@@ -238,19 +238,22 @@ void *TrainModelThread(void *id)
 		  g = (label - expTable[(int)((f + MAX_EXP) * (EXP_TABLE_SIZE / MAX_EXP / 2))]); // * alpha;  // alpha multiplication has moved to the step call
 		}				      
 
-
-
 	      g_tensor.Set(0, 0, g);
-	      auto error_signals = dot_module.Backward(dot_input, g_tensor);	      
 
-	      neu1e.InlineAdd(error_signals[1].Transpose().Slice(0));
-	      word_weights_embeddings_module.Backward(label_input, error_signals[0]);
-	      word_weights_embeddings_module.Step(alpha);
+	      graph.BackPropagate("DotProduct", g_tensor);
+
+	      // auto error_signals = dot_module.Backward(dot_input, g_tensor);	      
+
+	      // neu1e.InlineAdd(error_signals[1].Transpose().Slice(0));
+	      // word_weights_embeddings_module.Backward(label_input, error_signals[0]);
+	      // word_weights_embeddings_module.Step(alpha);
 	    }
 	}
+
+      graph.Step(alpha);
       
-      word_vectors_embeddings_module.Backward(inputs, neu1e_unsqueezed);
-      word_vectors_embeddings_module.Step(alpha);
+      // word_vectors_embeddings_module.Backward(inputs, neu1e_unsqueezed);
+      // word_vectors_embeddings_module.Step(alpha);
     }
   pthread_exit(NULL);
 }

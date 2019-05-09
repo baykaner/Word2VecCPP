@@ -82,7 +82,7 @@ public:
       this->gradient_accumulation_->Slice(typename ArrayType::SizeType(double(i))).InlineAdd(errorSignal.Slice(j));
       j++;
     }
-    return {};//ArrayType(errorSignal.shape())};
+    return {errorSignal};
   }
 
   virtual void Step(typename T::Type learningRate)

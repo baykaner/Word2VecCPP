@@ -99,7 +99,7 @@ public:
 	this->gradient_accumulation_->Slice(typename ArrayType::SizeType(i)).InlineAdd(error_signal_slice);
       }
     }
-    return {};
+    return {error_signal};
   }
 
   virtual void Step(typename T::Type learningRate)
