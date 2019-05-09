@@ -115,30 +115,12 @@ void *TrainModelThread(void *id)
   long long target, label;
   real f, g;
 
-  fetch::math::Tensor<real, 2> neu1_unsqueezed({1, layer1_size});  // context word average matrix
-  fetch::math::Tensor<real, 2> neu1_transposed = neu1_unsqueezed.Transpose();  // context word average matrix
-  fetch::math::Tensor<real, 1> neu1 = neu1_unsqueezed.Slice(0);    // context word average vector
 
-  fetch::math::Tensor<real, 2> neu1e_unsqueezed({1, layer1_size}); // error matrix
-  fetch::math::Tensor<real, 1> neu1e = neu1e_unsqueezed.Slice(0);  // error vector
-
-  fetch::math::Tensor<real, 2> label_weight_unsqueezed({1, layer1_size});       // label word weights matrix
-  fetch::math::Tensor<real, 1> label_weight = label_weight_unsqueezed.Slice(0); // label word weights vector
-
-  fetch::math::Tensor<real, 2> f_tensor({1, 1});
-  fetch::math::Tensor<real, 2> g_tensor({1, 1});
-
+  fetch::math::Tensor<real, 2> f_tensor({1, 1}); // Prediction
+  fetch::math::Tensor<real, 2> g_tensor({1, 1}); // Error
+  fetch::math::Tensor<real, 2> label_tensor({1, 1}); // Ground truth
+  
   auto sample = thread_loader.GetNext();
-  std::vector<std::reference_wrapper<fetch::math::Tensor<real, 2> const>> inputs;
-  inputs.push_back(std::cref(sample.first));
-
-  fetch::math::Tensor<real, 2> label_tensor({1, 1});
-  std::vector<std::reference_wrapper<fetch::math::Tensor<real, 2> const>> label_input;
-  label_input.push_back(std::cref(label_tensor));
-
-  std::vector<std::reference_wrapper<fetch::math::Tensor<real, 2> const>> dot_input;
-  dot_input.push_back(std::cref(label_weight_unsqueezed));
-  dot_input.push_back(std::cref(neu1_transposed));
   
   unsigned int iterations = global_loader.Size() / num_threads;
   //  auto start = std::chrono::system_clock::now();
@@ -153,17 +135,6 @@ void *TrainModelThread(void *id)
 	  std::cout << i << " / " << iter * iterations << " (" << (int)(100.0 * i / (iter * iterations)) << ") -- " << alpha << std::endl;
 	}
 
-      // auto end = std::chrono::system_clock::now();
-      // std::chrono::duration<double> elapsed_seconds = end-start;    
-
-      // if (elapsed_seconds.count() > 1)
-      // 	{
-      // 	  std::cout << "Word / sec " << i - last_count << std::endl;
-      // 	  last_count = i;
-      // 	  start = std::chrono::system_clock::now();
-      // 	}
-      
-      
       if (thread_loader.IsDone())
 	{
 	  std::cout << id << " -- Reset" << std::endl;
@@ -172,64 +143,47 @@ void *TrainModelThread(void *id)
       thread_loader.GetNext(sample);
       word = sample.second.Get(0, 0);
     
-      //      neu1.Fill(0);
-      //      neu1e.Fill(0);
-
-      graph.SetInput("Context", sample.first);
-      // word_vectors_embeddings_module.Forward(inputs, neu1_unsqueezed);
-      		
-      // NEGATIVE SAMPLING
-      // Rather than performing backpropagation for every word in our 
-      // vocabulary, we only perform it for the positive sample and a few
-      // negative samples (the number of words is given by 'negative').
-      // These negative words are selected using a "unigram" distribution, 
-      // which is generated in the function InitUnigramTable.
-      if (negative > 0)
+      graph.SetInput("Context", sample.first);      		
+      for (d = 0; d < negative + 1; d++)
 	{
-	  for (d = 0; d < negative + 1; d++)
+	  // On the first iteration, we're going to train the positive sample.
+	  if (d == 0)
 	    {
-	      // On the first iteration, we're going to train the positive sample.
-	      if (d == 0)
-		{
-		  target = word;
-		  label = 1;
-		}
-	      else
-		{
-		  target = unigram_table.SampleNegative(target);
-		  if (target == word) continue;
-		  label = 0;
-		}
-	      
-	      f = 0;
-
-	      label_tensor.Set(0, 0, target);
-	      graph.SetInput("Target", label_tensor);
-
-	      auto graphF = graph.Evaluate("DotProduct");
-
-	      f = graphF.Get(0, 0);
-	      
-	      if (f > MAX_EXP)
-		{
-		  g = (label - 1); //  * alpha; // alpha multiplication has moved to the step call
-		}
-	      else if (f < -MAX_EXP)
-		{
-		  g = (label - 0); //  * alpha; // alpha multiplication has moved to the step call
-		}
-	      else
-		{
-		  g = (label - expTable[(int)((f + MAX_EXP) * (EXP_TABLE_SIZE / MAX_EXP / 2))]); // * alpha;  // alpha multiplication has moved to the step call
-		}				      
-
-	      g_tensor.Set(0, 0, g);
-
-	      graph.BackPropagate("DotProduct", g_tensor);
-
+	      target = word;
+	      label = 1;
 	    }
-	}
+	  else
+	    {
+	      target = unigram_table.SampleNegative(target);
+	      if (target == word) continue;
+	      label = 0;
+	    }
+	  
+	  f = 0;
 
+	  label_tensor.Set(0, 0, target);
+	  graph.SetInput("Target", label_tensor);
+
+	  auto graphF = graph.Evaluate("DotProduct");
+
+	  f = graphF.Get(0, 0);
+	  
+	  if (f > MAX_EXP)
+	    {
+	      g = (label - 1); //  * alpha; // alpha multiplication has moved to the step call
+	    }
+	  else if (f < -MAX_EXP)
+	    {
+	      g = (label - 0); //  * alpha; // alpha multiplication has moved to the step call
+	    }
+	  else
+	    {
+	      g = (label - expTable[(int)((f + MAX_EXP) * (EXP_TABLE_SIZE / MAX_EXP / 2))]); // * alpha;  // alpha multiplication has moved to the step call
+	    }				      
+	  
+	  g_tensor.Set(0, 0, g);
+	  graph.BackPropagate("DotProduct", g_tensor);
+	}
       graph.Step(alpha);
     }
   pthread_exit(NULL);
