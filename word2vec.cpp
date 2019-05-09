@@ -112,13 +112,13 @@ void *TrainModelThread(void *id)
    * word_count - Stores the total number of training words processed.
    */
   long long d, word;
-  long long target, label;
+  long long target;
   real f, g;
 
 
-  fetch::math::Tensor<real, 2> f_tensor({1, 1}); // Prediction
-  fetch::math::Tensor<real, 2> g_tensor({1, 1}); // Error
-  fetch::math::Tensor<real, 2> label_tensor({1, 1}); // Ground truth
+  fetch::math::Tensor<real, 2> f_tensor({1, uint64_t(negative)}); // Prediction
+  fetch::math::Tensor<real, 2> g_tensor({1, uint64_t(negative)}); // Error
+  fetch::math::Tensor<real, 2> label_tensor({1, uint64_t(negative)}); // Target Word input
   
   auto sample = thread_loader.GetNext();
   
@@ -140,50 +140,40 @@ void *TrainModelThread(void *id)
 	  std::cout << id << " -- Reset" << std::endl;
 	  thread_loader.Reset();
 	}
+
       thread_loader.GetNext(sample);
       word = sample.second.Get(0, 0);
     
       graph.SetInput("Context", sample.first);      		
-      for (d = 0; d < negative + 1; d++)
+      for (d = 0; d < negative ; d++)
 	{
-	  // On the first iteration, we're going to train the positive sample.
+	  // Fill the target word input -- [0] is positive sample, the rest is negative
 	  if (d == 0)
-	    {
-	      target = word;
-	      label = 1;
-	    }
+	    label_tensor.Set(0, d, word);
 	  else
-	    {
-	      target = unigram_table.SampleNegative(target);
-	      if (target == word) continue;
-	      label = 0;
-	    }
-	  
-	  f = 0;
-
-	  label_tensor.Set(0, 0, target);
-	  graph.SetInput("Target", label_tensor);
-
-	  auto graphF = graph.Evaluate("DotProduct");
-
-	  f = graphF.Get(0, 0);
-	  
+	    label_tensor.Set(0, d, unigram_table.SampleNegative(word));
+	}
+      graph.SetInput("Target", label_tensor);
+      auto graphF = graph.Evaluate("DotProduct");
+      
+      for (d = 0; d < negative ; d++)
+	{
+      	  f = graphF.Get(0, d);
+	  float label = (d == 0) ? 1 : 0;
 	  if (f > MAX_EXP)
 	    {
-	      g = (label - 1); //  * alpha; // alpha multiplication has moved to the step call
+	      g_tensor.Set(0, d, label - 1);
 	    }
 	  else if (f < -MAX_EXP)
 	    {
-	      g = (label - 0); //  * alpha; // alpha multiplication has moved to the step call
+	      g_tensor.Set(0, d, label - 0);
 	    }
 	  else
 	    {
-	      g = (label - expTable[(int)((f + MAX_EXP) * (EXP_TABLE_SIZE / MAX_EXP / 2))]); // * alpha;  // alpha multiplication has moved to the step call
-	    }				      
-	  
-	  g_tensor.Set(0, 0, g);
-	  graph.BackPropagate("DotProduct", g_tensor);
+	      g_tensor.Set(0, d, label - expTable[(int)((f + MAX_EXP) * (EXP_TABLE_SIZE / MAX_EXP / 2))]);
+	    }				      	  
 	}
+      graph.BackPropagate("DotProduct", g_tensor);
       graph.Step(alpha);
     }
   pthread_exit(NULL);

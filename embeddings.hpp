@@ -52,9 +52,6 @@ public:
   {
     assert(this->output_);
     assert(inputs.size() == 1);
-    assert(
-        (inputs.front().get().shape().size() == 1) ||
-        ((inputs.front().get().shape().size() == 2) && (inputs.front().get().shape().at(1) == 1)));
     assert(output.shape() == ComputeOutputShape(inputs));
 
     uint64_t j(0);
@@ -71,9 +68,6 @@ public:
       ArrayType const &                                           errorSignal)
   {
     assert(inputs.size() == 1);
-    assert(
-        (inputs.front().get().shape().size() == 1) ||
-        ((inputs.front().get().shape().size() == 2) && (inputs.front().get().shape().at(1) == 1)));
 
     uint64_t j(0);
     for (DataType const &i : inputs.front().get())
