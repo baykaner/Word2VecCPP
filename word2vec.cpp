@@ -58,6 +58,9 @@ fetch::ml::ops::AveragedEmbeddings<fetch::math::Tensor<float, 2>> word_vectors_e
 fetch::ml::ops::Embeddings<fetch::math::Tensor<float, 2>> word_weights_embeddings_module(1, 1);
 fetch::ml::ops::MatrixMultiply<fetch::math::Tensor<float, 2>> dot_module;
 
+// Keep out for easy saving
+fetch::math::Tensor<real, 2> word_embeding_matrix({1, 1});
+
 std::string readFile(std::string const &path)
 {
   std::ifstream t(path);
@@ -77,7 +80,7 @@ void InitUnigramTable()
 void InitNet()
 {
   fetch::math::Tensor<real, 2> weight_embeding_matrix({global_loader.VocabSize(), layer1_size});
-  fetch::math::Tensor<real, 2> word_embeding_matrix({global_loader.VocabSize(), layer1_size});
+  word_embeding_matrix = fetch::math::Tensor<real, 2>({global_loader.VocabSize(), layer1_size});
   for (auto &e : word_embeding_matrix)
     e = static_cast <float> (rand()) / static_cast <float> (RAND_MAX) / layer1_size;
   word_vectors_embeddings_module.SetData(word_embeding_matrix);
@@ -202,27 +205,9 @@ void *TrainModelThread(void *id)
 
 	      label_tensor.Set(0, 0, target);
 	      graph.SetInput("Target", label_tensor);
-	      // word_weights_embeddings_module.Forward(label_input, label_weight_unsqueezed);
-
-
-	      // dot_module.Forward(dot_input, f_tensor);	      
-	      // for (int fi(0) ; fi < layer1_size ; ++fi) // Dot Product
-	      // 	f += label_weight.Get(fi) * neu1.Get(fi);
-
-	      // if (f != f_tensor.Get(0, 0))
-	      // 	{
-	      // 	  std::cerr << f << " != " << f_tensor.Get(0, 0) << std::endl;
-	      // 	}
 
 	      auto graphF = graph.Evaluate("DotProduct");
 
-	      // if (f != graphF.Get(0, 0))
-	      // 	{
-	      // 	  std::cerr << f << " != " << graphF.Get(0, 0) << std::endl;
-	      // 	}
-
-	      
-	      
 	      f = graphF.Get(0, 0);
 	      
 	      if (f > MAX_EXP)
@@ -242,18 +227,10 @@ void *TrainModelThread(void *id)
 
 	      graph.BackPropagate("DotProduct", g_tensor);
 
-	      // auto error_signals = dot_module.Backward(dot_input, g_tensor);	      
-
-	      // neu1e.InlineAdd(error_signals[1].Transpose().Slice(0));
-	      // word_weights_embeddings_module.Backward(label_input, error_signals[0]);
-	      // word_weights_embeddings_module.Step(alpha);
 	    }
 	}
 
       graph.Step(alpha);
-      
-      // word_vectors_embeddings_module.Backward(inputs, neu1e_unsqueezed);
-      // word_vectors_embeddings_module.Step(alpha);
     }
   pthread_exit(NULL);
 }
@@ -291,10 +268,6 @@ void TrainModel()
   // Run training, which occurs in the 'TrainModelThread' function.
   for (a = 0; a < num_threads; a++) pthread_create(&pt[a], NULL, TrainModelThread, (void *)a);
   for (a = 0; a < num_threads; a++) pthread_join(pt[a], NULL);
-
-  fetch::math::Tensor<real, 2> index({1, 1});
-  std::vector<std::reference_wrapper<fetch::math::Tensor<real, 2> const>> in_index({std::cref(index)});
-  fetch::math::Tensor<real, 2> vector({1, layer1_size}); 
   
   fo = fopen(output_file, "wb");
   if (classes == 0) {
@@ -304,12 +277,9 @@ void TrainModel()
     for (auto kvp : vocab) // for (a = 0; a < vocab_size; a++)
       {
 	fprintf(fo, "%s ", kvp.first.c_str()); //	fprintf(fo, "%s ", vocab[a].word);
-
-	index.Set(0, 0, kvp.second.first);
-	word_vectors_embeddings_module.Forward(in_index, vector);
 	for (b = 0; b < layer1_size; b++)
 	  {
-	    real v = vector.Get(0, b);
+	    real v = word_embeding_matrix.Get(kvp.second.first, b);
 	    fwrite(&v, sizeof(real), 1, fo);
 	  }
 	fprintf(fo, "\n");
