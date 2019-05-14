@@ -110,7 +110,7 @@ public:
   }
 
   virtual std::vector<std::pair<NodeInterface<T> *, ArrayType>> BackPropagate(
-      ArrayType const &errorSignal)
+      ArrayType const &errorSignal) 
   {
     //    FETCH_LOG_INFO("ML_LIB", "Backpropagating node [", name_, "]");
     std::vector<std::reference_wrapper<const ArrayType>> inputs = GatherInputs();
@@ -168,8 +168,12 @@ private:
   std::vector<std::shared_ptr<NodeInterface<T>>> inputs_;
   std::vector<std::shared_ptr<NodeInterface<T>>> outputs_;
   std::string                                    name_;
+  
   ArrayType                                      cached_output_;
   CachedOutputState                              cached_output_status_;
+
+  
+
   bool                                           batch_;
 };
 

@@ -112,53 +112,6 @@ public:
   Tensor &operator=(Tensor const &other) = default;
   Tensor &operator=(Tensor &&) = default;
 
-  void Init(std::vector<SizeType> const &strides = std::vector<SizeType>(),
-            std::vector<SizeType> const &padding = std::vector<SizeType>())
-  {
-    if (!shape_.empty())
-    {
-      if (strides.empty())
-      {
-        strides_ = std::vector<SizeType>(shape_.size(), 1);
-      }
-      else
-      {
-        strides_ = strides;
-      }
-      if (padding.empty())
-      {
-        padding_        = std::vector<SizeType>(shape_.size(), 0);
-        padding_.back() = DefaultAlignment - ((strides_.back() * shape_.back()) % DefaultAlignment);
-      }
-      SizeType dim = 1;
-      for (SizeType i(shape_.size()); i-- > 0;)
-      {
-        dim *= strides_[i];
-        strides_[i] = dim;
-        dim *= shape_[i];
-        dim += padding_[i];
-      }
-      size_ = 1;
-      if (shape_.empty())
-	{
-	  size_ = 0;
-	}
-      for (SizeType d : shape_)
-	{
-	  size_ *= d;
-	}
-      if (!storage_)
-      {
-        offset_ = 0;
-        if (!shape_.empty())
-        {
-          storage_ = std::shared_ptr<T>(new T[std::max(SizeType(1), DimensionSize(0) * shape_[0] + padding_[0])], std::default_delete<T[]>());
-	  memset(storage_.get(), 0, std::max(SizeType(1), DimensionSize(0) * shape_[0] + padding_[0]) * sizeof(T));
-        }
-      }
-    }
-  }
-
   /**
    * Returns a deep copy of this tensor
    * @return
@@ -178,7 +131,7 @@ public:
    */
   Tensor &Copy(SelfType const &o)
   {
-    assert(size() == o.size());
+    assert(Size() == o.Size());
     auto it1 = this->begin();
     auto end = this->end();
     auto it2 = o.begin();
@@ -227,45 +180,10 @@ public:
     return std::max(SizeType(1), DimensionSize(0) * shape_[0] + padding_[0]);
   }
 
-  // TODO(private, 520): fix capitalisation (kepping it consistent with NDArray for now)
-  SizeType size() const
+  SizeType Size() const
   {
     return size_;
   }
-
-  // /**
-  //  * Return the coordinates of the nth element in N dimensions
-  //  * @param element     ordinal position of the element we want
-  //  * @return            coordinate of said element in the tensor
-  //  */
-  // std::vector<SizeType> IndicesOfElement(SizeType element) const
-  // {
-  //   // ASSERT(element < size());
-  //   std::vector<SizeType> results(shape_.size());
-  //   results.back() = element;
-  //   for (SizeType i(shape_.size() - 1); i > 0; --i)
-  //   {
-  //     results[i - 1] = results[i] / shape_[i];
-  //     results[i] %= shape_[i];
-  //   }
-  //   return results;
-  // }
-
-  // /**
-  //  * Return the offset of element at specified coordinates in the low level memory array
-  //  * @param indices     coordinate of requested element in the tensor
-  //  * @return            offset in low level memory array
-  //  */
-  // SizeType OffsetOfElement(std::vector<SizeType> const &indices) const
-  // {
-  //   SizeType index(offset_);
-  //   for (SizeType i(0); i < indices.size(); ++i)
-  //   {
-  //     // ASSERT(indices[i] < shape_[i]);
-  //     index += indices[i] * DimensionSize(i);
-  //   }
-  //   return index;
-  // }
 
   void Fill(T const &value)
   {
@@ -416,7 +334,7 @@ public:
 
   SelfType &InlineAdd(Tensor<T, RANK> const &o, T alpha = T(1.0f))
   {
-    assert(size() == o.size());
+    assert(Size() == o.Size());
     auto it1 = this->begin();
     auto end = this->end();
     auto it2 = o.begin();
@@ -442,7 +360,7 @@ public:
 
   SelfType &InlineSubtract(Tensor<T, RANK> const &o)
   {
-    assert(size() == o.size());
+    assert(Size() == o.Size());
     auto it1 = this->begin();
     auto end = this->end();
     auto it2 = o.begin();
@@ -467,7 +385,7 @@ public:
 
   SelfType &InlineMultiply(Tensor<T, RANK> const &o)
   {
-    assert(size() == o.size());
+    assert(Size() == o.Size());
     auto it1 = this->begin();
     auto end = this->end();
     auto it2 = o.begin();
@@ -492,7 +410,7 @@ public:
 
   SelfType &InlineDivide(Tensor<T, RANK> const &o)
   {
-    assert(size() == o.size());
+    assert(Size() == o.Size());
     auto it1 = this->begin();
     auto end = this->end();
     auto it2 = o.begin();
@@ -547,32 +465,6 @@ public:
       }
     return ss.str();
   }
-
-
-  //////////////////////
-  /// equality check ///
-  //////////////////////
-
-  /**
-   * equality operator for tensors. checks size, shape, and data.
-   * Fast when tensors not equal, slow otherwise
-   * @param other
-   * @return
-   */
-  // bool operator==(Tensor const &other) const
-  // {
-  //   bool ret = false;
-  //   if ((this->size() == other.size()) && (this->shape_ == other.shape()))
-  //   {
-  //     ret = this->AllClose(other);
-  //   }
-  //   return ret;
-  // }
-
-  // bool operator!=(Tensor const &other) const
-  // {
-  //   return !(*this == other);
-  // }
 
 private:
   std::array<SizeType, RANK>      shape_;

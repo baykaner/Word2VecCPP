@@ -41,18 +41,13 @@ public:
     return Forward(inputs, output);
   }
 
-  virtual ArrayType Forward(std::vector<std::reference_wrapper<ArrayType const>> const &inputs,
-                            ArrayType &                                                 output) = 0;
-  virtual std::vector<ArrayType> Backward(
-      std::vector<std::reference_wrapper<const ArrayType>> const &inputs,
-      ArrayType const &                                           errorSignal) = 0;
-  virtual ArrayType ForwardBatch(
-      std::vector<std::reference_wrapper<const ArrayType>> const &inputs) = 0;
-  virtual std::vector<ArrayType> BackwardBatch(
-      std::vector<std::reference_wrapper<const ArrayType>> const &inputs,
-      ArrayType const &                                           errorSignal) = 0;
-  virtual std::array<SizeType, OUTPUT_RANK> ComputeOutputShape(
-      std::vector<std::reference_wrapper<ArrayType const>> const &inputs) const = 0;
+  virtual ArrayType Forward(std::vector<std::reference_wrapper<ArrayType const>> const &inputs, ArrayType &output) = 0;
+  virtual std::vector<ArrayType> Backward(std::vector<std::reference_wrapper<const ArrayType>> const &inputs, ArrayType const &errorSignal) = 0;
+
+  virtual ArrayType ForwardBatch(std::vector<std::reference_wrapper<const ArrayType>> const &inputs) = 0;
+  virtual std::vector<ArrayType> BackwardBatch(std::vector<std::reference_wrapper<const ArrayType>> const &inputs, ArrayType const & errorSignal) = 0;
+
+  virtual std::array<SizeType, OUTPUT_RANK> ComputeOutputShape(std::vector<std::reference_wrapper<ArrayType const>> const &inputs) const = 0;
 
   void SetTraining(bool is_training)
   {

@@ -146,7 +146,7 @@ public:
 	t.first.Set(0, i, T(data_[currentSentence_][currentWord_ + i]));
 	t.first.Set(0, i + dynamic_size, T(data_[currentSentence_][currentWord_ + dynamic_size + i + 1]));
       }
-    for (uint64_t i(dynamic_size * 2); i < t.first.size() ; ++i)
+    for (uint64_t i(dynamic_size * 2); i < t.first.Size() ; ++i)
       {
 	t.first.Set(0, i, -1);
       }

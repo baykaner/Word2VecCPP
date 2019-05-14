@@ -57,6 +57,8 @@ fetch::ml::Graph<fetch::math::Tensor<real, 2>> graph;
 fetch::ml::ops::AveragedEmbeddings<fetch::math::Tensor<float, 2>> word_vectors_embeddings_module(1, 1);
 fetch::ml::ops::Embeddings<fetch::math::Tensor<float, 2>> word_weights_embeddings_module(1, 1);
 fetch::ml::ops::MatrixMultiply<fetch::math::Tensor<float, 2>> dot_module;
+// Add a sigmoid module here -- Not done for now as it would require bringing all the math library
+
 
 // Keep out for easy saving
 fetch::math::Tensor<real, 2> word_embeding_matrix({1, 1});
@@ -155,7 +157,9 @@ void *TrainModelThread(void *id)
 	}
       graph.SetInput("Target", label_tensor);
       auto graphF = graph.Evaluate("DotProduct");
-      
+
+
+      // This block computes sigmoid activation + MSE and store error signal in g_tensor 
       for (d = 0; d < negative ; d++)
 	{
       	  f = graphF.Get(0, d);

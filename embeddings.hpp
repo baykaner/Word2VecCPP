@@ -102,7 +102,7 @@ public:
   virtual std::array<SizeType, 2> ComputeOutputShape(
       std::vector<std::reference_wrapper<ArrayType const>> const &inputs) const
   {
-    return {inputs.front().get().size(), this->output_->shape()[1]};
+    return {inputs.front().get().Size(), this->output_->shape()[1]};
   }
 
 private:
