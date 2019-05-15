@@ -17,8 +17,10 @@
 //
 //------------------------------------------------------------------------------
 
-#include "tensor.hpp"
 #include "dataloader.hpp"
+#include "lcg.hpp"
+#include "tensor.hpp"
+#include "unigram_table.hpp"
 
 #include <exception>
 #include <fstream>
@@ -26,8 +28,6 @@
 #include <random>
 #include <string>
 #include <utility>
-
-#include "lcg.hpp"
 
 namespace fetch {
 namespace ml {
@@ -39,10 +39,11 @@ public:
   using ReturnType = std::pair<fetch::math::Tensor<T, 2>, fetch::math::Tensor<T, 2>>;
   
 public:
-  CBOWLoader(uint64_t window_size)
+  CBOWLoader(uint64_t window_size, uint64_t negative_samples)
     : currentSentence_(0)
     , currentWord_(0)
     , window_size_(window_size)
+    , negative_samples_(negative_samples)
   {}
 
   virtual uint64_t Size() const
@@ -112,7 +113,7 @@ public:
   {
     // Removing words while keeping indexes consecutive takes too long
     // So creating a new object, not the most efficient, but good enought for now
-    CBOWLoader new_loader(window_size_);
+    CBOWLoader new_loader(window_size_, negative_samples_);
     std::map<uint64_t, std::pair<std::string, uint64_t>> reverse_vocab;
     for (auto const &kvp : vocab_)
       {
@@ -134,6 +135,16 @@ public:
     vocab_ = std::move(new_loader.vocab_);
   }
 
+  void InitUnigramTable()
+  {
+    std::vector<uint64_t> frequencies(VocabSize());
+    for (auto const &kvp : GetVocab())
+      {
+	frequencies[kvp.second.first] = kvp.second.second;
+      }
+    unigram_table_.Reset(1e8, frequencies);
+  }
+
   ReturnType &GetNext(ReturnType &t)
   {
     // This seems to be one of the most important tricks to get word2vec to train
@@ -150,6 +161,10 @@ public:
       {
 	t.first.Set(0, i, -1);
       }
+    for (uint64_t i(1); i < negative_samples_ ; ++i)
+      {
+	t.second.Set(0, i, T(unigram_table_.SampleNegative(t.second.Get(0, 0))));
+      }
     currentWord_++;
     if (currentWord_ >= data_.at(currentSentence_).size() - (2 * window_size_))
     {
@@ -162,7 +177,7 @@ public:
   ReturnType GetNext()
   {
     fetch::math::Tensor<T, 2> t({1, window_size_ * 2});
-    fetch::math::Tensor<T, 2> label({1, 1});
+    fetch::math::Tensor<T, 2> label({1, negative_samples_});
     ReturnType p(t, label);
     return GetNext(p);
   }  
@@ -239,9 +254,11 @@ private:
   uint64_t                                                currentSentence_;
   uint64_t                                                currentWord_;
   uint64_t                                                window_size_;
+  uint64_t                                                negative_samples_;
   std::map<std::string, std::pair<uint64_t, uint64_t>>    vocab_;
   std::vector<std::vector<uint64_t>>                      data_;
   fetch::random::LinearCongruentialGenerator              rng_;
+  UnigramTable                                            unigram_table_;
 };
 }  // namespace ml
 }  // namespace fetch

@@ -19,7 +19,6 @@
 #include "matrix_multiply.hpp"
 #include "inplace_transpose.hpp"
 #include "placeholder.hpp"
-
 #include "graph.hpp"
 
 using namespace fetch::ml;
@@ -30,7 +29,7 @@ using namespace fetch::ml::ops;
 
 typedef float real;                    // Precision of float numbers
 
-CBOWLoader<real> global_loader(5);
+CBOWLoader<real> global_loader(5, 25);
 UnigramTable unigram_table(0);
  
 std::string train_file, output_file;
@@ -56,16 +55,6 @@ std::string readFile(std::string const &path)
 {
   std::ifstream t(path);
   return std::string((std::istreambuf_iterator<char>(t)), std::istreambuf_iterator<char>());
-}
-
-void InitUnigramTable()
-{
-  std::vector<uint64_t> frequencies(global_loader.VocabSize());
-  for (auto const &kvp : global_loader.GetVocab())
-    {
-      frequencies[kvp.second.first] = kvp.second.second;
-    }
-  unigram_table.Reset(1e8, frequencies);
 }
 
 void InitNet()
@@ -95,7 +84,6 @@ void TrainModelThread()
    * word - Stores the index of a word in the vocab table.
    * word_count - Stores the total number of training words processed.
    */
-  long long d, word;
   real f;
 
 
@@ -122,18 +110,8 @@ void TrainModelThread()
 	}
 
       thread_loader.GetNext(sample);
-      word = sample.second.Get(0, 0);
-    
-      graph.SetInput("Context", sample.first);      		
-      for (d = 0; d < negative ; d++)
-	{
-	  // Fill the target word input -- [0] is positive sample, the rest is negative
-	  if (d == 0)
-	    label_tensor.Set(0, d, word);
-	  else
-	    label_tensor.Set(0, d, unigram_table.SampleNegative(word));
-	}
-      graph.SetInput("Target", label_tensor);
+      graph.SetInput("Context", sample.first);
+      graph.SetInput("Target", sample.second);
       auto graphF = graph.Evaluate("DotProduct");
 
 
@@ -173,21 +151,11 @@ void TrainModel()
   
   starting_alpha = alpha;
     
-  if (output_file.empty()) return;
+  if (output_file.empty())
+    return;
 
   InitNet();
-
-  if (negative > 0) InitUnigramTable();
-  
-  // Record the start time of training.
-  start = clock();
-  
-  // Run training, which occurs in the 'TrainModelThread' function.
-  std::cout << "Start " << output_file << std::endl;
-
   TrainModelThread();
-
-  std::cout << "Out " << output_file << std::endl;
   
   fo = fopen(output_file.c_str(), "wb");
   // Save the word vectors
@@ -218,8 +186,10 @@ int main(int argc, char **argv) {
   
   global_loader.AddData(readFile(train_file));
   global_loader.RemoveInfrequent(min_count);
+  global_loader.InitUnigramTable();
   std::cout << "Dataloader Vocab Size : " << global_loader.VocabSize() << std::endl;
-  
+
+    
   expTable = (real *)malloc((EXP_TABLE_SIZE + 1) * sizeof(real));
   for (i = 0; i < EXP_TABLE_SIZE; i++) {
     expTable[i] = exp((i / (real)EXP_TABLE_SIZE * 2 - 1) * MAX_EXP); // Precompute the exp() table
