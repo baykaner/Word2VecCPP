@@ -64,8 +64,8 @@ public:
   Node(std::string const name, Params... params)
     : O(params...)
     , name_(std::move(name))
-    , cached_output_status_(CachedOutputState::CHANGED_SIZE)
     , cached_output_({1, 1})
+    , cached_output_status_(CachedOutputState::CHANGED_SIZE)
     , batch_(false)
   {}
 
@@ -83,7 +83,6 @@ public:
 
   virtual ArrayType &Evaluate()
   {
-    //    FETCH_LOG_INFO("ML_LIB", "Evaluating node [", name_, "]");
     if (cached_output_status_ != CachedOutputState::VALID_CACHE)
     {
       std::vector<std::reference_wrapper<const ArrayType>> inputs = GatherInputs();
@@ -112,7 +111,6 @@ public:
   virtual std::vector<std::pair<NodeInterface<T> *, ArrayType>> BackPropagate(
       ArrayType const &errorSignal) 
   {
-    //    FETCH_LOG_INFO("ML_LIB", "Backpropagating node [", name_, "]");
     std::vector<std::reference_wrapper<const ArrayType>> inputs = GatherInputs();
     std::vector<ArrayType> back_propagated_error_signals = this->Backward(inputs, errorSignal);
     std::vector<std::pair<NodeInterface<T> *, ArrayType>> non_back_propagated_error_signals;
@@ -168,12 +166,9 @@ private:
   std::vector<std::shared_ptr<NodeInterface<T>>> inputs_;
   std::vector<std::shared_ptr<NodeInterface<T>>> outputs_;
   std::string                                    name_;
-  
+
   ArrayType                                      cached_output_;
   CachedOutputState                              cached_output_status_;
-
-  
-
   bool                                           batch_;
 };
 
