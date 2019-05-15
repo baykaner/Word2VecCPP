@@ -116,7 +116,7 @@ void TrainModelThread()
 
 
       // This block computes sigmoid activation + MSE and store error signal in g_tensor 
-      for (d = 0; d < negative ; d++)
+      for (int d = 0; d < negative ; d++)
 	{
       	  f = graphF.Get(0, d);
 	  float label = (d == 0) ? 1 : 0;
