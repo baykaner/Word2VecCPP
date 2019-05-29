@@ -107,26 +107,6 @@ real CalcExp(real f)
   }
 }
 
-real CalcLoss(std::valarray<real> & in_vec, std::vector<std::valarray<real>> & u, real u_j)
-{
-  // L = -log(softmax(u_j))
-  // L = -log(exp(u_j) / ∑_i(exp(u_i)))
-  // L= −u_j + log(∑_i(exp(u_i))).
-  // where u is the output of the dot-product of input_vector and embeddings matrix
-  // and u_i represents the row of this output matrix (for a single word)
-  // and u_j represents the target word row specifically
-
-  real loss = -u_j;
-
-  real log_sigma = 0;
-  for (std::size_t i = 0; i < u.size(); ++i)
-  {
-    log_sigma += CalcExp(CalcDotProductRow(in_vec, u, i));
-  }
-
-  loss += std::log(log_sigma);
-  return loss;
-}
 
 /**
  * ======== TrainModelThread ========
